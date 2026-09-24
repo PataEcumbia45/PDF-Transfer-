@@ -1,0 +1,9 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pdfplumber>=0.11
+pypdf>=5.0
+markdown-it-py>=3.0
+mdit-py-plugins>=0.4
+pygments>=2.18
+weasyprint>=63

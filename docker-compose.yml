@@ -1,0 +1,13 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      APP_NAME: "PDF Transfer"
+      # Claves de clientes de pago: "clave:plan,clave2:plan" (planes: pro, business)
+      API_KEYS: ""
+      CONTACT_EMAIL: ""
+      ALLOW_REMOTE_IMAGES: "false"
+      DISABLE_LIMITS: "false"
+    restart: unless-stopped

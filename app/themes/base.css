@@ -1,0 +1,46 @@
+/* Estilos comunes a todos los temas del PDF (y de la vista previa). */
+@page {
+  margin: 22mm 20mm 24mm;
+  @bottom-center {
+    content: counter(page) " / " counter(pages);
+    font-size: 8.5pt;
+    color: #8a8f98;
+  }
+}
+html { font-size: 10.5pt; }
+body { margin: 0; line-height: 1.55; color: #1d2330; overflow-wrap: break-word; }
+h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 1.4em 0 .5em; break-after: avoid; }
+h1 { font-size: 2em; } h2 { font-size: 1.5em; } h3 { font-size: 1.25em; }
+h4 { font-size: 1.1em; } h5 { font-size: 1em; } h6 { font-size: .95em; color: #555; }
+body > :first-child { margin-top: 0; }
+p { margin: 0 0 .8em; orphans: 3; widows: 3; }
+a { color: var(--accent, #2457d6); text-decoration: none; }
+strong { font-weight: 700; }
+img { max-width: 100%; height: auto; }
+figure, img, table, pre, blockquote { break-inside: avoid; }
+hr { border: 0; border-top: 1px solid #d9dde5; margin: 1.6em 0; }
+blockquote { margin: 0 0 1em; padding: .2em 1em; border-left: 3px solid var(--accent, #2457d6); color: #475063; background: #f6f8fb; }
+ul, ol { margin: 0 0 .9em; padding-left: 1.6em; }
+li { margin: .15em 0; }
+li > p { margin: 0 0 .3em; }
+li.task-list-item { list-style: none; }
+.task-list-item-checkbox { margin: 0 .45em 0 -1.35em; vertical-align: -.1em; }
+code, pre, kbd, samp { font-family: "DejaVu Sans Mono", "Liberation Mono", "Courier New", monospace; font-size: .88em; }
+:not(pre) > code { background: #eef1f6; padding: .1em .35em; border-radius: 3px; }
+pre { background: #f5f7fa; border: 1px solid #e3e7ee; border-radius: 6px; padding: .8em 1em; white-space: pre-wrap; line-height: 1.45; margin: 0 0 1em; }
+pre code { background: none; padding: 0; font-size: 1em; }
+table { border-collapse: collapse; width: 100%; margin: 0 0 1em; font-size: .95em; }
+th, td { border: 1px solid #cfd5df; padding: .4em .6em; text-align: left; vertical-align: top; }
+th { background: #eef1f6; font-weight: 700; }
+tr { break-inside: avoid; }
+.footnotes { font-size: .88em; color: #475063; }
+.footnotes-sep { margin-top: 2em; }
+/* Resaltado de código (Pygments) */
+.hl .k, .hl .kd, .hl .kn, .hl .kr, .hl .kc { color: #8b3fd9; font-weight: 600; }
+.hl .s, .hl .s1, .hl .s2, .hl .sb, .hl .sd, .hl .se { color: #1a7f37; }
+.hl .c, .hl .c1, .hl .cm, .hl .cs, .hl .ch { color: #7a8394; font-style: italic; }
+.hl .m, .hl .mi, .hl .mf, .hl .mh { color: #b35900; }
+.hl .nf, .hl .fm, .hl .nc { color: #2457d6; }
+.hl .nb, .hl .bp { color: #0a7ea4; }
+.hl .o, .hl .ow { color: #bb2255; }
+.hl .nt { color: #22863a; } .hl .na { color: #6f42c1; }

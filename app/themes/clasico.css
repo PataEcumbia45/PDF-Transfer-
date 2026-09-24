@@ -1,0 +1,9 @@
+/* Tema "Clásico": serif editorial, ideal para informes y documentos formales. */
+:root { --accent: #7a2e2e; }
+html { font-size: 11pt; }
+body { font-family: "Liberation Serif", "DejaVu Serif", "Times New Roman", serif; text-align: justify; hyphens: auto; color: #222; }
+h1, h2, h3, h4, h5, h6 { font-family: "Liberation Serif", "DejaVu Serif", serif; text-align: left; font-weight: 700; }
+h1 { text-align: center; font-size: 2.1em; margin-bottom: .9em; }
+h2 { font-variant: small-caps; letter-spacing: .02em; }
+blockquote { background: none; font-style: italic; border-left-color: #b9a1a1; }
+th { background: #f3eeee; }

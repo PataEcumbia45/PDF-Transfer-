@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PDF Transfer — Convierte PDF ⇄ Markdown sin perder nada</title>
+  <meta name="description" content="Convierte PDF a Markdown y Markdown a PDF con vista previa en vivo, temas profesionales y viaje de ida y vuelta sin pérdidas.">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="brand" href="#">
+        <img src="/static/favicon.svg" alt="" width="28" height="28">
+        <span data-app-name>PDF Transfer</span>
+      </a>
+      <nav class="nav">
+        <a href="#convertir">Convertir</a>
+        <a href="#como-funciona">Cómo funciona</a>
+        <a href="#precios">Precios</a>
+        <a href="#api">API</a>
+      </nav>
+      <div class="topbar-actions">
+        <span class="plan-chip" id="planChip" title="Tu plan actual">Plan Gratis</span>
+        <button class="icon-btn" id="themeToggle" aria-label="Cambiar tema claro/oscuro" title="Tema claro/oscuro">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8A9.1 9.1 0 0 0 12 3Z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero wrap">
+      <h1>Convierte <span class="grad">PDF ⇄ Markdown</span><br>sin perder el contenido</h1>
+      <p class="lead">Títulos, listas, tablas, código, enlaces e imágenes. Los PDF creados aquí llevan su Markdown dentro:
+        vuelve a convertirlos y recuperas el original <strong>exacto</strong>.</p>
+    </section>
+
+    <section id="convertir" class="wrap">
+      <div class="card converter">
+        <div class="tabs" role="tablist">
+          <button role="tab" class="tab active" data-mode="pdf2md" aria-selected="true">
+            <span class="tab-icons"><span class="tab-ico">PDF</span> → <span class="tab-ico md">MD</span></span> PDF a Markdown
+          </button>
+          <button role="tab" class="tab" data-mode="md2pdf" aria-selected="false">
+            <span class="tab-icons"><span class="tab-ico md">MD</span> → <span class="tab-ico">PDF</span></span> Markdown a PDF
+          </button>
+        </div>
+
+        <div class="drop" id="drop" tabindex="0" role="button" aria-label="Seleccionar archivos">
+          <input type="file" id="fileInput" multiple hidden>
+          <div class="drop-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="34" height="34"><path fill="currentColor" d="M19 15v4H5v-4H3v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4h-2ZM11 5.83V16h2V5.83l3.59 3.58L18 8l-6-6-6 6 1.41 1.41L11 5.83Z"/></svg>
+          </div>
+          <p class="drop-title" id="dropTitle">Arrastra aquí tus PDF</p>
+          <p class="drop-sub" id="dropSub">o <u>haz clic para elegirlos</u> · varios a la vez</p>
+          <button class="btn ghost small" id="newDoc" type="button" hidden>✎ Escribir Markdown desde cero</button>
+        </div>
+
+        <div class="options" id="pdfOptions">
+          <label class="check"><input type="checkbox" id="optImages" checked> Extraer imágenes</label>
+        </div>
+        <div class="options" id="mdOptions" hidden>
+          <label>Estilo
+            <select id="optTheme"></select>
+          </label>
+          <label>Papel
+            <select id="optPage"></select>
+          </label>
+          <label class="check" title="Guarda el Markdown original dentro del PDF para recuperarlo sin pérdidas">
+            <input type="checkbox" id="optEmbed" checked> Ida y vuelta sin pérdidas
+          </label>
+        </div>
+
+        <ul class="files" id="files" aria-live="polite"></ul>
+
+        <div class="batch-actions" id="batchActions" hidden>
+          <button class="btn ghost" id="clearAll" type="button">Vaciar lista</button>
+          <button class="btn" id="downloadAll" type="button">Descargar todo (.zip)</button>
+        </div>
+      </div>
+
+      <div class="card workspace" id="workspace" hidden>
+        <div class="ws-head">
+          <div class="ws-title">
+            <input id="docName" class="doc-name" aria-label="Nombre del documento" spellcheck="false">
+            <span class="badge" id="sourceBadge" hidden></span>
+          </div>
+          <div class="ws-actions" id="wsActions"></div>
+        </div>
+        <div class="warnings" id="warnings" hidden></div>
+        <div class="toolbar" id="toolbar">
+          <button data-md="**|**" title="Negrita (Ctrl+B)"><b>B</b></button>
+          <button data-md="*|*" title="Cursiva (Ctrl+I)"><i>I</i></button>
+          <button data-md="~~|~~" title="Tachado"><s>S</s></button>
+          <span class="sep"></span>
+          <button data-line="# " title="Título 1">H1</button>
+          <button data-line="## " title="Título 2">H2</button>
+          <button data-line="### " title="Título 3">H3</button>
+          <span class="sep"></span>
+          <button data-line="- " title="Lista">• Lista</button>
+          <button data-line="1. " title="Lista numerada">1. Lista</button>
+          <button data-line="- [ ] " title="Tareas">☐ Tareas</button>
+          <button data-line="> " title="Cita">❝ Cita</button>
+          <span class="sep"></span>
+          <button data-md="`|`" title="Código en línea">&lt;/&gt;</button>
+          <button data-block="```&#10;|&#10;```" title="Bloque de código">{ }</button>
+          <button data-md="[|](https://)" title="Enlace">🔗</button>
+          <button data-block="| Columna 1 | Columna 2 |&#10;|---|---|&#10;| | |" title="Tabla">▦ Tabla</button>
+          <span class="grow"></span>
+          <div class="view-switch" role="group" aria-label="Vista">
+            <button data-view="split" class="on">Dividida</button>
+            <button data-view="edit">Editor</button>
+            <button data-view="preview">Vista previa</button>
+          </div>
+        </div>
+        <div class="panes" id="panes" data-view="split">
+          <textarea id="editor" spellcheck="false" aria-label="Editor Markdown"></textarea>
+          <div class="preview-wrap">
+            <iframe id="preview" title="Vista previa" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+          </div>
+        </div>
+        <div class="ws-foot"><span id="stats"></span><span class="muted">La vista previa muestra el aspecto real del PDF.</span></div>
+      </div>
+    </section>
+
+    <section id="como-funciona" class="wrap features">
+      <h2>Pensado para no perder nada</h2>
+      <div class="grid3">
+        <article class="feature">
+          <div class="f-ico">⇄</div>
+          <h3>Ida y vuelta exacta</h3>
+          <p>Cada PDF generado incluye su Markdown y sus imágenes como adjuntos estándar. Al convertirlo de nuevo obtienes el archivo original, carácter por carácter.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico">▦</div>
+          <h3>Estructura real</h3>
+          <p>Con cualquier otro PDF analizamos el diseño: títulos por tamaño de letra, negritas, cursivas, listas, tablas, bloques de código, enlaces, columnas e imágenes.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico">✦</div>
+          <h3>PDF con estilo</h3>
+          <p>Tres temas profesionales, resaltado de código, tablas, notas al pie, listas de tareas, índice navegable y numeración de páginas.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico">⚡</div>
+          <h3>Por lotes</h3>
+          <p>Suelta varios archivos a la vez y descárgalos juntos en un .zip.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico">🔒</div>
+          <h3>Privado</h3>
+          <p>Los archivos se procesan en memoria y no se guardan en el servidor.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico">{ }</div>
+          <h3>API para desarrolladores</h3>
+          <p>Integra la conversión en tus sistemas con una API REST documentada.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="precios" class="wrap pricing">
+      <h2>Planes</h2>
+      <p class="muted center">Empieza gratis. Mejora cuando lo necesites.</p>
+      <div class="grid3" id="plans"></div>
+    </section>
+
+    <section id="api" class="wrap api">
+      <h2>API</h2>
+      <p class="muted">Documentación interactiva en <a href="/docs">/docs</a>. Ejemplos:</p>
+<pre><code># PDF → Markdown (descarga .md directamente)
+curl -H "X-API-Key: TU_CLAVE" -F file=@informe.pdf -F output=md \
+     <span data-origin></span>/api/convert/pdf-to-md -o informe.md
+
+# Markdown → PDF
+curl -H "X-API-Key: TU_CLAVE" -F file=@notas.md -F theme=clasico \
+     <span data-origin></span>/api/convert/md-to-pdf -o notas.pdf</code></pre>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">© <span id="year"></span> <span data-app-name>PDF Transfer</span> · Tus archivos no se almacenan.</div>
+  </footer>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+/* Tema "Técnico": compacto, pensado para documentación y código. */
+:root { --accent: #0b7a75; }
+html { font-size: 10pt; }
+body { font-family: "DejaVu Sans", "Liberation Sans", Arial, sans-serif; line-height: 1.5; }
+h1, h2, h3 { font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; letter-spacing: -.01em; }
+h1 { font-size: 1.8em; color: var(--accent); }
+h2 { font-size: 1.35em; border-left: 4px solid var(--accent); padding-left: .45em; }
+h3 { font-size: 1.15em; }
+pre { background: #0f1720; color: #e6edf3; border-color: #0f1720; }
+pre .hl .k, pre .hl .kd, pre .hl .kn, pre .hl .kr, pre .hl .kc { color: #d2a8ff; }
+pre .hl .s, pre .hl .s1, pre .hl .s2 { color: #7ee787; }
+pre .hl .c, pre .hl .c1, pre .hl .cm { color: #8b949e; }
+pre .hl .nf, pre .hl .fm, pre .hl .nc { color: #79c0ff; }
+pre .hl .m, pre .hl .mi, pre .hl .mf { color: #ffa657; }
+pre .hl .o, pre .hl .ow { color: #ff7b72; }
