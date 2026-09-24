@@ -19,6 +19,8 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from markdown_it import MarkdownIt
+from mdit_py_plugins.amsmath import amsmath_plugin
+from mdit_py_plugins.dollarmath import dollarmath_plugin
 from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.front_matter import front_matter_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
@@ -28,6 +30,7 @@ from pygments.lexers import get_lexer_by_name
 from pygments.util import ClassNotFound
 
 from .embed import embed_source
+from .math_render import render_math_html
 
 THEMES_DIR = Path(__file__).resolve().parent.parent / "themes"
 THEMES = {"moderno": "Moderno", "clasico": "Clásico", "tecnico": "Técnico"}
@@ -65,6 +68,12 @@ def _build_parser(assets: dict[str, bytes]) -> MarkdownIt:
         .use(front_matter_plugin)
         .use(footnote_plugin)
         .use(tasklists_plugin)
+        # Fórmulas: $...$ en línea, $$...$$ en bloque y entornos \begin{align}...
+        # Sin espacios junto a los $ ni dígitos tras el $ de cierre, para que
+        # importes como "$5 y $10" no se confundan con fórmulas.
+        .use(dollarmath_plugin, allow_space=False, allow_digits=False, double_inline=True,
+             renderer=lambda tex, cfg: render_math_html(tex, cfg["display_mode"]))
+        .use(amsmath_plugin, renderer=lambda tex: render_math_html(tex, True))
     )
     normalized = {_normalize_asset_name(k): v for k, v in assets.items()}
     default_image = md.renderer.rules.get("image")
@@ -81,6 +90,17 @@ def _build_parser(assets: dict[str, bytes]) -> MarkdownIt:
         return default_image(tokens, idx, options, env)
 
     md.add_render_rule("image", render_image)
+
+    default_fence = md.renderer.rules.get("fence")
+
+    def render_fence(self, tokens, idx, options, env):
+        # Bloques ```math también se dibujan como fórmula.
+        token = tokens[idx]
+        if token.info.strip().lower() in {"math", "latex", "tex"}:
+            return f'<div class="math block">{render_math_html(token.content, True)}</div>\n'
+        return default_fence(tokens, idx, options, env)
+
+    md.add_render_rule("fence", render_fence)
     return md
 
 

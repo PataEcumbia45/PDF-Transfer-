@@ -26,6 +26,7 @@ from pypdf.errors import PdfReadError
 from . import __version__
 from .config import PLANS, Plan, settings
 from .converters.md_to_pdf import PAGE_SIZES, THEMES, PdfOptions, is_image_name, markdown_to_pdf, render_html
+from .converters.ai_transcribe import AIError, transcribe_pdf
 from .converters.pdf_to_md import pdf_to_markdown
 from .limits import check_pages, check_size, current_plan, resolve_plan
 
@@ -126,6 +127,7 @@ def config(request: Request):
         "themes": [{"id": k, "name": v} for k, v in THEMES.items()],
         "page_sizes": list(PAGE_SIZES),
         "limits_enabled": not settings.disable_limits,
+        "ai_enabled": settings.ai_enabled,
     }
 
 
@@ -134,13 +136,16 @@ def convert_pdf_to_md(
     file: UploadFile = File(..., description="Archivo PDF"),
     images: str = Form("embed", description="'embed' (extraer imágenes) o 'none'"),
     output: str = Form("json", description="'json', 'md' o 'zip'"),
+    mode: str = Form("auto", description="'auto', 'ai' (Modo IA) o 'standard'"),
     plan: Plan = Depends(current_plan),
 ):
     """Convierte un PDF a Markdown.
 
     Si el PDF fue generado por este servicio, se recupera el Markdown original
     exacto (``source = "embedded"``). En otro caso se reconstruye analizando el
-    diseño del documento (``source = "extracted"``).
+    diseño del documento (``source = "extracted"``) o, en Modo IA, Claude
+    transcribe cada página con sus fórmulas en LaTeX (``source = "ai"``).
+    ``mode = "auto"`` usa el Modo IA solo si el PDF tiene fórmulas o está escaneado.
     """
     data = file.file.read()
     check_size(data, plan)
@@ -152,12 +157,33 @@ def convert_pdf_to_md(
         raise HTTPException(400, "No se pudo leer el PDF: el archivo está dañado o no es compatible.") from exc
     check_pages(pages, plan)
 
+    images = "none" if images == "none" else "embed"
+    if mode == "ai" and not settings.ai_enabled:
+        raise HTTPException(400, "El Modo IA no está configurado en este servidor.")
     try:
-        result = pdf_to_markdown(data, images="none" if images == "none" else "embed")
+        result = pdf_to_markdown(data, images=images)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:  # PDFs rotos o exóticos
         raise HTTPException(422, "No se pudo convertir este PDF.") from exc
+
+    wants_ai = result.source != "embedded" and (
+        mode == "ai" or (mode == "auto" and settings.ai_enabled and (result.has_math or result.scanned))
+    )
+    if wants_ai:
+        if not settings.disable_limits and pages > plan.ai_max_pages:
+            message = (f"El Modo IA del plan {plan.name} admite hasta {plan.ai_max_pages} páginas "
+                       f"y este PDF tiene {pages}.")
+            if mode == "ai":
+                raise HTTPException(413, message)
+            result.warnings.insert(0, message + " Se ha usado la lectura estándar.")
+        else:
+            try:
+                result = transcribe_pdf(data, images=images)
+            except AIError as exc:
+                if mode == "ai":
+                    raise HTTPException(502, str(exc)) from exc
+                result.warnings.insert(0, f"{exc} Se ha usado la lectura estándar.")
 
     name = _stem(file.filename)
     if output == "md":
@@ -172,6 +198,7 @@ def convert_pdf_to_md(
         "source": result.source,
         "pages": result.pages,
         "warnings": result.warnings,
+        "has_math": result.has_math,
         "assets": {k: base64.b64encode(v).decode() for k, v in result.assets.items()},
     }
 

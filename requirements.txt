@@ -7,3 +7,5 @@ markdown-it-py>=3.0
 mdit-py-plugins>=0.4
 pygments>=2.18
 weasyprint>=63
+anthropic>=1.0
+pypdfium2>=4.30

@@ -8,6 +8,8 @@ services:
       # Claves de clientes de pago: "clave:plan,clave2:plan" (planes: pro, business)
       API_KEYS: ""
       CONTACT_EMAIL: ""
+      # Modo IA (fórmulas complejas, escaneos y manuscritos): clave de https://console.anthropic.com
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       ALLOW_REMOTE_IMAGES: "false"
       DISABLE_LIMITS: "false"
     restart: unless-stopped

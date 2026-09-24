@@ -33,7 +33,7 @@
   <main>
     <section class="hero wrap">
       <h1>Convierte <span class="grad">PDF ⇄ Markdown</span><br>sin perder el contenido</h1>
-      <p class="lead">Títulos, listas, tablas, código, enlaces e imágenes. Los PDF creados aquí llevan su Markdown dentro:
+      <p class="lead">Fórmulas matemáticas, títulos, listas, tablas, código e imágenes. Los PDF creados aquí llevan su Markdown dentro:
         vuelve a convertirlos y recuperas el original <strong>exacto</strong>.</p>
     </section>
 
@@ -59,7 +59,15 @@
         </div>
 
         <div class="options" id="pdfOptions">
+          <label title="Cómo leer fórmulas, PDF escaneados y texto escrito a mano">Fórmulas y escaneos
+            <select id="optMode">
+              <option value="auto">Automático</option>
+              <option value="ai">Modo IA (máxima precisión)</option>
+              <option value="standard">Lectura estándar</option>
+            </select>
+          </label>
           <label class="check"><input type="checkbox" id="optImages" checked> Extraer imágenes</label>
+          <p class="opt-note" id="modeNote"></p>
         </div>
         <div class="options" id="mdOptions" hidden>
           <label>Estilo
@@ -107,6 +115,11 @@
           <button data-md="`|`" title="Código en línea">&lt;/&gt;</button>
           <button data-block="```&#10;|&#10;```" title="Bloque de código">{ }</button>
           <button data-md="[|](https://)" title="Enlace">🔗</button>
+          <span class="sep"></span>
+          <button data-md="$|$" title="Fórmula en línea (LaTeX)"><i>x</i>²</button>
+          <button data-block="$$&#10;|&#10;$$" title="Fórmula en bloque (LaTeX)">∑ Fórmula</button>
+          <button data-md="\frac{|}{}" title="Fracción">a⁄b</button>
+          <button data-md="\sqrt{|}" title="Raíz">√</button>
           <button data-block="| Columna 1 | Columna 2 |&#10;|---|---|&#10;| | |" title="Tabla">▦ Tabla</button>
           <span class="grow"></span>
           <div class="view-switch" role="group" aria-label="Vista">
@@ -142,6 +155,11 @@
           <div class="f-ico">✦</div>
           <h3>PDF con estilo</h3>
           <p>Tres temas profesionales, resaltado de código, tablas, notas al pie, listas de tareas, índice navegable y numeración de páginas.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico">∑</div>
+          <h3>Fórmulas matemáticas</h3>
+          <p>Escribe en LaTeX ($x^2$, fracciones, raíces, matrices, sistemas…) y obtén un PDF impecable. Al leer PDF, el Modo IA transcribe fórmulas, escaneos y escritura a mano.</p>
         </article>
         <article class="feature">
           <div class="f-ico">⚡</div>

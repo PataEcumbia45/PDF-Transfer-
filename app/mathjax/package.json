@@ -1,0 +1,9 @@
+{
+  "name": "pdf-transfer-mathjax",
+  "private": true,
+  "description": "Renderizado de fórmulas LaTeX a SVG para los PDF (MathJax).",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "mathjax-full": "3.2.2"
+  }
+}

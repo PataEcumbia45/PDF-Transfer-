@@ -1,4 +1,11 @@
-FROM python:3.12-slim
+# --- MathJax (fórmulas LaTeX → SVG) ---
+FROM node:20-bookworm-slim AS mathjax
+WORKDIR /build
+COPY app/mathjax/package.json app/mathjax/package-lock.json ./
+RUN npm ci --omit=dev
+
+# --- Aplicación ---
+FROM python:3.12-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -8,15 +15,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Librerías de maquetación de WeasyPrint y fuentes con buena cobertura (acentos, símbolos, emoji).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 \
+        libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 libstdc++6 \
         fonts-dejavu fonts-liberation fonts-noto-core fonts-noto-color-emoji \
     && rm -rf /var/lib/apt/lists/*
+
+# Node.js solo para ejecutar MathJax.
+COPY --from=mathjax /usr/local/bin/node /usr/local/bin/node
 
 WORKDIR /srv
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY app ./app
+COPY --from=mathjax /build/node_modules ./app/mathjax/node_modules
 RUN useradd --create-home --uid 10001 appuser
 USER appuser
 

@@ -44,3 +44,9 @@ tr { break-inside: avoid; }
 .hl .nb, .hl .bp { color: #0a7ea4; }
 .hl .o, .hl .ow { color: #bb2255; }
 .hl .nt { color: #22863a; } .hl .na { color: #6f42c1; }
+/* Fórmulas (MathJax → SVG) */
+img.math { max-width: none; display: inline; }
+img.math-inline { margin: 0 .05em; }
+div.math.block, div.math.amsmath { text-align: center; margin: .9em 0; break-inside: avoid; }
+div.math.block img.math-display, div.math.amsmath img.math-display { max-width: 100%; height: auto; }
+code.math-error { color: #b42318; background: #fdecec; }

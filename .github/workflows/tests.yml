@@ -14,5 +14,9 @@ jobs:
           python-version: "3.12"
       - name: Dependencias del sistema
         run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu fonts-liberation
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci --prefix app/mathjax
       - run: pip install -r requirements-dev.txt
       - run: pytest -q

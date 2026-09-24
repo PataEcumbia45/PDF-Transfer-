@@ -18,6 +18,11 @@ exactamente cómo quedará el PDF.
 - Listas, **negritas**, *cursivas* y \`código\`
 - [Enlaces](https://commonmark.org) y notas al pie[^1]
 - [x] Listas de tareas
+- Fórmulas en LaTeX: $x^2 + y^2 = r^2$
+
+$$
+x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}
+$$
 
 | Formato | Soportado |
 |---------|-----------|
@@ -218,6 +223,7 @@ def saludo(nombre):
           const fd = new FormData();
           fd.append("file", item.file);
           fd.append("images", $("#optImages").checked ? "embed" : "none");
+          fd.append("mode", $("#optMode").value);
           const data = await (await api("/api/convert/pdf-to-md", { method: "POST", body: fd })).json();
           Object.assign(item, { status: "done", markdown: data.markdown, assets: data.assets || {}, source: data.source, pages: data.pages, warnings: data.warnings || [] });
           if (!state.active.pdf2md) state.active.pdf2md = item.id;
@@ -334,12 +340,15 @@ def saludo(nombre):
   function statusText(item) {
     switch (item.status) {
       case "queued": return "En cola…";
-      case "working": return state.mode === "pdf2md" ? "Convirtiendo…" : "Procesando…";
+      case "working":
+        if (state.mode !== "pdf2md") return "Procesando…";
+        return $("#optMode").value === "ai" ? "Transcribiendo con IA… (puede tardar un poco)" : "Convirtiendo…";
       case "error": return item.error || "Error";
       case "done":
         if (state.mode === "pdf2md") {
           const n = Object.keys(item.assets || {}).length;
-          return `${item.pages} pág. · ${item.source === "embedded" ? "original recuperado sin pérdidas" : "reconstruido"}${n ? ` · ${n} imagen(es)` : ""}`;
+          const how = { embedded: "original recuperado sin pérdidas", ai: "transcrito con IA" }[item.source] || "reconstruido";
+          return `${item.pages} pág. · ${how}${n ? ` · ${n} imagen(es)` : ""}`;
         }
         return "PDF generado";
       default: return item.size ? `${fmtBytes(item.size)} · listo para convertir` : "Listo para convertir";
@@ -411,11 +420,15 @@ def saludo(nombre):
     const badge = $("#sourceBadge");
     if (state.mode === "pdf2md" && item.source) {
       badge.hidden = false;
-      badge.className = `badge ${item.source === "embedded" ? "ok" : "info"}`;
-      badge.textContent = item.source === "embedded" ? "✓ Original exacto recuperado" : "Reconstruido desde el diseño";
-      badge.title = item.source === "embedded"
-        ? "Este PDF se creó con PDF Transfer: se ha recuperado el Markdown original sin ninguna pérdida."
-        : "El Markdown se ha reconstruido analizando el diseño del PDF. Revísalo en el editor.";
+      const badges = {
+        embedded: ["ok", "✓ Original exacto recuperado", "Este PDF se creó con PDF Transfer: se ha recuperado el Markdown original sin ninguna pérdida."],
+        ai: ["info", "✦ Transcrito con IA", "Claude ha transcrito cada página, con las fórmulas en LaTeX. Revísalo en el editor."],
+        extracted: ["info", "Reconstruido desde el diseño", "El Markdown se ha reconstruido analizando el diseño del PDF. Revísalo en el editor."],
+      };
+      const [cls, label, title] = badges[item.source] || badges.extracted;
+      badge.className = `badge ${cls}`;
+      badge.textContent = label;
+      badge.title = title;
     } else {
       badge.hidden = true;
     }
@@ -541,6 +554,7 @@ def saludo(nombre):
           <li>PDF de hasta ${p.max_pages.toLocaleString("es")} páginas</li>
           <li>${rate}</li>
           <li>Lotes de ${p.batch_size} archivos</li>
+          ${cfg.ai_enabled ? `<li>Modo IA: ${p.ai_max_pages.toLocaleString("es")} págs. por documento</li>` : ""}
           ${p.id !== "free" ? "<li>Acceso a la API</li>" : "<li>Ida y vuelta sin pérdidas</li>"}
         </ul>`;
       let action;
@@ -599,6 +613,23 @@ def saludo(nombre):
       page.value = safeGet("pdfPage") || "A4";
     }
     renderPlans();
+    renderModeNote();
+  }
+
+  function renderModeNote() {
+    const cfg = state.config;
+    const select = $("#optMode");
+    const aiOption = select.querySelector('option[value="ai"]');
+    aiOption.disabled = !cfg.ai_enabled;
+    if (!cfg.ai_enabled && select.value === "ai") select.value = "auto";
+    const notes = {
+      auto: cfg.ai_enabled
+        ? `Usa el Modo IA solo si el PDF tiene fórmulas o está escaneado (hasta ${cfg.plan.ai_max_pages} págs. en tu plan).`
+        : "Lee fórmulas sencillas (potencias, subíndices, símbolos). El Modo IA no está activado en este servidor.",
+      ai: `Claude transcribe cada página: fracciones, matrices, sistemas, escaneos y escritura a mano (hasta ${cfg.plan.ai_max_pages} págs. en tu plan).`,
+      standard: "Solo análisis del diseño: rápido y sin IA. Lee fórmulas sencillas (potencias, subíndices, símbolos).",
+    };
+    $("#modeNote").textContent = notes[select.value];
   }
 
   // --------------------------------------------------------- tema visual
@@ -676,6 +707,8 @@ def saludo(nombre):
     renderFiles();
     schedulePreview(0);
   }));
+  $("#optMode").addEventListener("change", () => { safeSet("pdfMode", $("#optMode").value); renderModeNote(); });
+  $("#optMode").value = safeGet("pdfMode") || "auto";
   $("#optEmbed").addEventListener("change", () => state.lists.md2pdf.forEach((i) => { i.pdfBlob = null; }));
 
   document.querySelectorAll("[data-origin]").forEach((el) => { el.textContent = location.origin; });

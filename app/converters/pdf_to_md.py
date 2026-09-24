@@ -7,8 +7,12 @@ Dos caminos:
 2. **Reconstrucción**: para cualquier otro PDF se analiza el diseño con
    pdfplumber: tamaños y estilos de fuente (títulos, negrita, cursiva,
    código), sangrías y viñetas (listas), tablas con bordes, enlaces, imágenes,
-   texto a dos columnas, y se eliminan encabezados/pies de página repetidos y
-   números de página.
+   texto a dos columnas, fórmulas sencillas (potencias, subíndices, letras
+   griegas y símbolos, que se escriben en LaTeX), y se eliminan
+   encabezados/pies de página repetidos y números de página.
+
+Las fórmulas complejas (fracciones, matrices, escritura a mano, escaneos) las
+transcribe el Modo IA (``ai_transcribe.py``).
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from __future__ import annotations
 import io
 import re
 import statistics
+import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -23,6 +28,7 @@ import pdfplumber
 from pypdf import PdfReader
 
 from .embed import extract_source
+from .math_text import is_glue, is_math_font, is_variable, looks_like_math, to_latex
 
 BULLET_RE = re.compile(r"^([•●○◦▪▫■□‣⁃∙·◆◇►▸➢✓✔\-–—*+])\s*(?=\S)")
 NUMBERED_RE = re.compile(r"^(\d{1,3}|[a-zA-Z]|[ivxlcdm]{1,6})([.)])\s+(?=\S)")
@@ -45,6 +51,7 @@ class Word:
     italic: bool
     mono: bool
     link: str | None = None
+    math: bool = False  # fuente matemática o símbolos matemáticos
 
 
 @dataclass
@@ -104,9 +111,11 @@ class Block:
 class ConversionResult:
     markdown: str
     assets: dict[str, bytes]
-    source: str  # "embedded" (sin pérdidas) | "extracted" (reconstruido)
+    source: str  # "embedded" (sin pérdidas) | "extracted" (reconstruido) | "ai" (Modo IA)
     pages: int
     warnings: list[str]
+    has_math: bool = False  # se detectaron fórmulas
+    scanned: bool = False  # apenas hay texto seleccionable
 
 
 # ---------------------------------------------------------------- utilidades
@@ -151,10 +160,12 @@ def _page_words(page, exclude: list[tuple], links: list[tuple[tuple, str]]) -> l
         box = (w["x0"], w["top"], w["x1"], w["bottom"])
         if any(_inside(box, ex) for ex in exclude):
             continue
-        bold, italic, mono = _font_flags(w.get("fontname", ""))
+        fontname = w.get("fontname", "")
+        bold, italic, mono = _font_flags(fontname)
         link = next((uri for lbox, uri in links if _inside(box, lbox, 0.0)), None)
+        math = is_math_font(fontname) or looks_like_math(w["text"])
         words.append(Word(w["text"], w["x0"], w["x1"], w["top"], w["bottom"],
-                          round(float(w.get("size", 0)), 1), bold, italic, mono, link))
+                          round(float(w.get("size", 0)), 1), bold, italic, mono and not math, link, math))
     return words
 
 
@@ -166,8 +177,12 @@ def _group_lines(words: list[Word], page_no: int) -> list[Line]:
             cur = lines[-1]
             ref = cur.words[-1]
             tol = max(2.0, min(ref.size, w.size) * 0.45)
-            # Misma línea: alineación vertical similar y a la derecha de la anterior.
-            if abs(w.top - cur.words[0].top) <= tol or abs(w.bottom - cur.words[0].bottom) <= tol:
+            # Misma línea: alineación vertical similar, o solapada en más de la mitad
+            # de su altura (potencias y subíndices, más pequeños y desplazados).
+            top, bottom = min(x.top for x in cur.words), max(x.bottom for x in cur.words)
+            overlap = min(w.bottom, bottom) - max(w.top, top)
+            if (abs(w.top - cur.words[0].top) <= tol or abs(w.bottom - cur.words[0].bottom) <= tol
+                    or overlap >= 0.5 * (w.bottom - w.top)):
                 cur.words.append(w)
                 continue
         lines.append(Line([w], page_no))
@@ -250,10 +265,35 @@ def _table_markdown(rows: list[list[str | None]]) -> str | None:
 # ---------------------------------------------------------- formato en línea
 
 
+def _baseline(line: Line) -> tuple[float, float]:
+    """Línea de base y tamaño de letra principal (ignorando potencias y subíndices)."""
+    size = max((w.size for w in line.words), default=0.0)
+    main = [w for w in line.words if w.size >= size * 0.85] or line.words
+    return statistics.median(w.bottom for w in main), statistics.median(w.size for w in main)
+
+
+def _script(w: Word, baseline: float, main_size: float) -> str:
+    """"^" si la palabra es una potencia, "_" si es un subíndice, "" si no."""
+    if not main_size or w.size > main_size * 0.95:
+        return ""
+    if w.bottom < baseline - main_size * 0.2:
+        return "^"
+    if w.bottom > baseline + main_size * 0.12:
+        return "_"
+    return ""
+
+
 def _inline(lines: list[Line], join_hyphens: bool = True) -> str:
-    """Convierte palabras con estilo en Markdown en línea (negrita, cursiva, código, enlaces)."""
-    tokens: list[tuple[str, tuple]] = []
+    """Convierte palabras con estilo en Markdown en línea.
+
+    Negrita, cursiva, código, enlaces y fórmulas sencillas: las palabras en
+    fuente matemática, con símbolos matemáticos o elevadas/rebajadas
+    (potencias/subíndices) se agrupan en un mismo ``$...$`` en LaTeX.
+    """
+    # (texto, estilo, separador, tipo) con tipo = "text" | "math" | "glue"
+    tokens: list[tuple[str, tuple, str, str]] = []
     for li, line in enumerate(lines):
+        baseline, main_size = _baseline(line)
         for wi, w in enumerate(line.words):
             text = w.text
             last_in_line = wi == len(line.words) - 1
@@ -266,18 +306,61 @@ def _inline(lines: list[Line], join_hyphens: bool = True) -> str:
                 glue = " " if gap > w.size * 0.12 else ""
             if last_in_line and join_hyphens and text.endswith("-") and len(text) > 1 and nxt[:1].islower():
                 text, glue = text[:-1], ""
-            tokens.append((text, (w.bold, w.italic, w.mono, w.link), glue))  # type: ignore[arg-type]
+            script = _script(w, baseline, main_size) if not w.mono else ""
+            if script:
+                kind, text = "math", f"{script}{{{to_latex(text)}}}"
+            elif w.math:
+                kind = "math"
+            elif is_glue(text) or is_variable(text):
+                kind = "glue"
+            else:
+                kind = "text"
+            tokens.append((text, (w.bold, w.italic, w.mono, w.link), glue, kind))
+
+    # Las piezas "glue" (números, operadores, paréntesis, variables como "x" o "f(x)")
+    # junto a una fórmula pasan a formar parte de ella.
+    kinds = [t[3] for t in tokens]
+    i = 0
+    while i < len(kinds):
+        if kinds[i] != "glue":
+            i += 1
+            continue
+        j = i
+        while j < len(kinds) and kinds[j] == "glue":
+            j += 1
+        touches_math = (i > 0 and kinds[i - 1] == "math") or (j < len(kinds) and kinds[j] == "math")
+        for k in range(i, j):
+            kinds[k] = "math" if touches_math else "text"
+        i = j
 
     out: list[str] = []
     i = 0
     while i < len(tokens):
+        if kinds[i] == "math":
+            j = i
+            while j < len(tokens) and kinds[j] == "math":
+                j += 1
+            parts, trailing = [], ""
+            for k in range(i, j):
+                text, _, glue, _ = tokens[k]
+                latex = text if text[:1] in "^_" and text[1:2] == "{" else to_latex(text)
+                parts.append(latex + (glue if k < j - 1 else ""))
+            formula = "".join(parts).strip()
+            # La puntuación final pertenece a la frase, no a la fórmula.
+            while formula and formula[-1] in ".,;:":
+                trailing = formula[-1] + trailing
+                formula = formula[:-1].rstrip()
+            glue_after = tokens[j - 1][2] if j < len(tokens) else ""
+            out.append((f"${formula}$" if formula else "") + trailing + glue_after)
+            i = j
+            continue
         style = tokens[i][1]
         run, j = [], i
-        while j < len(tokens) and tokens[j][1] == style:
+        while j < len(tokens) and kinds[j] != "math" and tokens[j][1] == style:
             run.append(tokens[j])
             j += 1
         bold, italic, mono, link = style
-        text = "".join(t + (g if k < len(run) - 1 else "") for k, (t, _, g) in enumerate(run))
+        text = "".join(t + (g if k < len(run) - 1 else "") for k, (t, _, g, _) in enumerate(run))
         glue_after = run[-1][2] if j < len(tokens) else ""
         if mono:
             ticks = "``" if "`" in text else "`"
@@ -400,7 +483,10 @@ def _render_block(block: Block) -> str:
     if block.kind == "list":
         marker = f"{block.number}." if block.ordered else "-"
         return "  " * block.level + f"{marker} " + _inline(block.lines)
-    return _escape_line_start(_inline(block.lines))
+    text = _inline(block.lines)
+    if re.fullmatch(r"\$[^$]+\$", text):  # párrafo que es solo una fórmula: ecuación en bloque
+        return f"$$\n{text[1:-1]}\n$$"
+    return _escape_line_start(text)
 
 
 # ---------------------------------------------------------------- principal
@@ -432,13 +518,28 @@ def _detect_repeated(all_lines: list[list[Line]], heights: list[float]) -> set[t
     return drop
 
 
-def pdf_to_markdown(data: bytes, images: str = "embed", prefer_embedded: bool = True) -> ConversionResult:
-    """Convierte un PDF a Markdown.
+def page_images(page, p: int, skip_full_page: bool = False) -> list[tuple[float, str, bytes]]:
+    """Imágenes de una página como PNG: ``[(posición vertical, nombre, bytes)]``."""
+    found = []
+    page_area = float(page.width * page.height) or 1.0
+    for k, im in enumerate(page.images):
+        x0, top = max(im["x0"], 0), max(im["top"], 0)
+        x1, bottom = min(im["x1"], page.width), min(im["bottom"], page.height)
+        if x1 - x0 < 24 or bottom - top < 24:
+            continue  # iconos y adornos
+        if skip_full_page and (x1 - x0) * (bottom - top) > page_area * 0.7:
+            continue  # página escaneada completa, no una figura
+        try:
+            pil = page.crop((x0, top, x1, bottom)).to_image(resolution=150).original
+            buf = io.BytesIO()
+            pil.save(buf, format="PNG", optimize=True)
+        except Exception:
+            continue
+        found.append((float(top), f"imagen-p{p + 1}-{k + 1}.png", buf.getvalue()))
+    return sorted(found)
 
-    ``images``: ``"embed"`` (guardar como assets referenciados en ``images/``),
-    o ``"none"`` (omitir imágenes).
-    """
-    warnings: list[str] = []
+
+def open_pdf(data: bytes) -> PdfReader:
     reader = PdfReader(io.BytesIO(data))
     if reader.is_encrypted:
         try:
@@ -447,6 +548,17 @@ def pdf_to_markdown(data: bytes, images: str = "embed", prefer_embedded: bool = 
             pass
         if reader.is_encrypted:
             raise ValueError("El PDF está protegido con contraseña.")
+    return reader
+
+
+def pdf_to_markdown(data: bytes, images: str = "embed", prefer_embedded: bool = True) -> ConversionResult:
+    """Convierte un PDF a Markdown.
+
+    ``images``: ``"embed"`` (guardar como assets referenciados en ``images/``),
+    o ``"none"`` (omitir imágenes).
+    """
+    warnings: list[str] = []
+    reader = open_pdf(data)
     if prefer_embedded:
         embedded = extract_source(reader)
         if embedded:
@@ -458,10 +570,14 @@ def pdf_to_markdown(data: bytes, images: str = "embed", prefer_embedded: bool = 
     page_extras: list[list[Block]] = []
     heights: list[float] = []
     total_chars = 0
+    image_pages = 0  # páginas ocupadas casi por completo por una imagen (escaneos, fotos)
 
     with pdfplumber.open(io.BytesIO(data)) as pdf:
         for p, page in enumerate(pdf.pages):
             heights.append(float(page.height))
+            area = float(page.width * page.height) or 1.0
+            if any((im["x1"] - im["x0"]) * (im["bottom"] - im["top"]) > area * 0.5 for im in page.images):
+                image_pages += 1
             extras: list[Block] = []
             exclude: list[tuple] = []
 
@@ -476,20 +592,9 @@ def pdf_to_markdown(data: bytes, images: str = "embed", prefer_embedded: bool = 
                     exclude.append(t.bbox)
 
             if images != "none":
-                for k, im in enumerate(page.images):
-                    x0, top = max(im["x0"], 0), max(im["top"], 0)
-                    x1, bottom = min(im["x1"], page.width), min(im["bottom"], page.height)
-                    if x1 - x0 < 24 or bottom - top < 24:
-                        continue  # iconos y adornos
-                    try:
-                        pil = page.crop((x0, top, x1, bottom)).to_image(resolution=150).original
-                        buf = io.BytesIO()
-                        pil.save(buf, format="PNG", optimize=True)
-                    except Exception:
-                        continue
-                    name = f"imagen-p{p + 1}-{k + 1}.png"
-                    assets[name] = buf.getvalue()
-                    extras.append(Block("image", top, p, markdown=f"![Imagen {p + 1}.{k + 1}](images/{name})"))
+                for top, name, png in page_images(page, p):
+                    assets[name] = png
+                    extras.append(Block("image", top, p, markdown=f"![Imagen](images/{name})"))
 
             links = []
             for h in page.hyperlinks or []:
@@ -504,11 +609,13 @@ def pdf_to_markdown(data: bytes, images: str = "embed", prefer_embedded: bool = 
             page_extras.append(extras)
 
     n_pages = len(page_lines)
-    if total_chars < 20 * max(1, n_pages) and n_pages:
+    scanned = bool(n_pages) and image_pages > 0 and total_chars < 20 * n_pages
+    if scanned:
         warnings.append(
-            "El PDF apenas contiene texto seleccionable (posiblemente escaneado). "
-            "Se han extraído las páginas como imágenes; el reconocimiento OCR no está incluido."
+            "El PDF apenas contiene texto seleccionable (escaneado o escrito a mano). "
+            "Usa el Modo IA para transcribirlo; mientras tanto se han extraído las páginas como imágenes."
         )
+    has_math = any(w.math for lines in page_lines for ln in lines for w in ln.words)
 
     drop = _detect_repeated(page_lines, heights)
     page_lines = [[ln for i, ln in enumerate(lines) if (p, i) not in drop] for p, lines in enumerate(page_lines)]
@@ -549,4 +656,9 @@ def pdf_to_markdown(data: bytes, images: str = "embed", prefer_embedded: bool = 
         parts.append((sep if parts else "") + rendered)
         prev = block
     markdown = "".join(parts).strip() + "\n"
-    return ConversionResult(markdown, assets, "extracted", n_pages, warnings)
+    if has_math and not scanned:
+        warnings.append(
+            "Este PDF contiene fórmulas. Se han reconstruido las sencillas (potencias, subíndices, "
+            "letras griegas y símbolos); para fracciones, matrices o sistemas usa el Modo IA."
+        )
+    return ConversionResult(markdown, assets, "extracted", n_pages, warnings, has_math, scanned)

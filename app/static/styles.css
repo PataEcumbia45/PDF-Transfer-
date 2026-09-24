@@ -100,6 +100,8 @@ h2 { font-size: 1.7rem; letter-spacing: -.02em; margin: 0 0 .6rem; }
 .options { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; padding: 14px 4px 2px; font-size: .92rem; }
 .options label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-weight: 500; }
 .options select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
+.opt-note { flex-basis: 100%; margin: 0; font-size: .82rem; color: var(--muted); }
+.opt-note:empty { display: none; }
 .check input { accent-color: var(--primary); width: 16px; height: 16px; }
 
 /* Lista de archivos */
