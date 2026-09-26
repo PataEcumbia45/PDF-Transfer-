@@ -550,8 +550,8 @@ def saludo(nombre):
       ["lim", "\\lim_{x \\to ‸} ", "Límite"], ["d⁄dx", "\\frac{d}{dx}‸", "Derivada"],
       ["∂⁄∂x", "\\frac{\\partial ‸}{\\partial x}", "Parcial"], ["f′(x)", "f'(‸)", "Prima"],
       ["∞", "\\infty", "Infinito"], ["eˣ", "e^{‸}", "Exponencial"], ["ln", "\\ln(‸)", "Log. natural"],
-      ["logᵦ", "\\log_{‸}", "Logaritmo"], ["sen", "\\sen(‸)", "Seno"], ["cos", "\\cos(‸)", "Coseno"],
-      ["tg", "\\tg(‸)", "Tangente"],
+      ["logᵦ", "\\log_{‸}", "Logaritmo"], ["sen", "\\operatorname{sen}(‸)", "Seno"], ["cos", "\\cos(‸)", "Coseno"],
+      ["tg", "\\operatorname{tg}(‸)", "Tangente"],
     ],
     "Álgebra": [
       ["{ 2 ec.", "\\begin{cases} ‸ \\\\  \\end{cases}", "Sistema", true],
