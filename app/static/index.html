@@ -116,10 +116,18 @@
           <button data-block="```&#10;|&#10;```" title="Bloque de código">{ }</button>
           <button data-md="[|](https://)" title="Enlace">🔗</button>
           <span class="sep"></span>
-          <button data-md="$|$" title="Fórmula en línea (LaTeX)"><i>x</i>²</button>
-          <button data-block="$$&#10;|&#10;$$" title="Fórmula en bloque (LaTeX)">∑ Fórmula</button>
-          <button data-md="\frac{|}{}" title="Fracción">a⁄b</button>
-          <button data-md="\sqrt{|}" title="Raíz">√</button>
+          <button data-md="$|$" title="Fórmula dentro del texto: $...$"><i>x</i>²</button>
+          <button data-block="$$&#10;|&#10;$$" title="Fórmula en su propia línea: $$...$$">$$</button>
+          <div class="palette-wrap">
+            <button type="button" id="paletteBtn" class="palette-btn" aria-expanded="false" aria-controls="palette"
+                    title="Insertar fórmulas y símbolos sin saber LaTeX">∑ Fórmulas ▾</button>
+            <div class="palette" id="palette" hidden role="dialog" aria-label="Fórmulas y símbolos">
+              <div class="palette-tabs" id="paletteTabs" role="tablist"></div>
+              <div class="palette-grid" id="paletteGrid"></div>
+              <p class="palette-hint">Las fórmulas se escriben en LaTeX entre <code>$…$</code> (en el texto) o
+                <code>$$…$$</code> (en su propia línea). Pulsa un botón y completa los huecos: la vista previa muestra el resultado.</p>
+            </div>
+          </div>
           <button data-block="| Columna 1 | Columna 2 |&#10;|---|---|&#10;| | |" title="Tabla">▦ Tabla</button>
           <span class="grow"></span>
           <div class="view-switch" role="group" aria-label="Vista">

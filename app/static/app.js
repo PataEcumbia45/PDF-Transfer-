@@ -535,6 +535,84 @@ def saludo(nombre):
     wrapSelection(pre + before, after + "\n");
   }
 
+  // ------------------------------------------------------ paleta de fórmulas
+  // [etiqueta, LaTeX con ‸ donde queda el cursor, descripción, ¿mejor en su propia línea?]
+  const PALETTE = {
+    "Básicas": [
+      ["a⁄b", "\\frac{‸}{}", "Fracción"], ["xⁿ", "^{‸}", "Potencia"], ["xₙ", "_{‸}", "Subíndice"],
+      ["√x", "\\sqrt{‸}", "Raíz"], ["ⁿ√x", "\\sqrt[‸]{}", "Raíz n"], ["( )", "\\left( ‸ \\right)", "Paréntesis"],
+      ["|x|", "\\left| ‸ \\right|", "Valor abs."], ["±", "\\pm ", "Más/menos"], ["×", "\\times ", "Por"],
+      ["÷", "\\div ", "Entre"], ["·", "\\cdot ", "Producto"], ["%", "\\%", "Porcentaje"],
+    ],
+    "Cálculo": [
+      ["∫", "\\int ‸ \\, dx", "Integral"], ["∫ₐᵇ", "\\int_{a}^{b} ‸ \\, dx", "Definida"],
+      ["∑", "\\sum_{i=1}^{n} ‸", "Sumatoria"], ["∏", "\\prod_{i=1}^{n} ‸", "Productoria"],
+      ["lim", "\\lim_{x \\to ‸} ", "Límite"], ["d⁄dx", "\\frac{d}{dx}‸", "Derivada"],
+      ["∂⁄∂x", "\\frac{\\partial ‸}{\\partial x}", "Parcial"], ["f′(x)", "f'(‸)", "Prima"],
+      ["∞", "\\infty", "Infinito"], ["eˣ", "e^{‸}", "Exponencial"], ["ln", "\\ln(‸)", "Log. natural"],
+      ["logᵦ", "\\log_{‸}", "Logaritmo"], ["sen", "\\sen(‸)", "Seno"], ["cos", "\\cos(‸)", "Coseno"],
+      ["tg", "\\tg(‸)", "Tangente"],
+    ],
+    "Álgebra": [
+      ["{ 2 ec.", "\\begin{cases} ‸ \\\\  \\end{cases}", "Sistema", true],
+      ["{ 3 ec.", "\\begin{cases} ‸ \\\\  \\\\  \\end{cases}", "Sistema", true],
+      ["(2×2)", "\\begin{pmatrix} ‸ &  \\\\  &  \\end{pmatrix}", "Matriz", true],
+      ["(3×3)", "\\begin{pmatrix} ‸ &  &  \\\\  &  &  \\\\  &  &  \\end{pmatrix}", "Matriz", true],
+      ["|2×2|", "\\begin{vmatrix} ‸ &  \\\\  &  \\end{vmatrix}", "Determ.", true],
+      ["= =", "\\begin{aligned} ‸ &=  \\\\ &=  \\end{aligned}", "Pasos", true],
+      ["v⃗", "\\vec{‸}", "Vector"], ["AB̅", "\\overline{‸}", "Segmento"], ["∠", "\\angle ‸", "Ángulo"],
+      ["°", "^{\\circ}", "Grados"], ["x̄", "\\bar{‸}", "Media"], ["n!", "‸!", "Factorial"],
+      ["(ⁿₖ)", "\\binom{‸}{}", "Combinatoria"],
+    ],
+    "Griego": "α:alpha β:beta γ:gamma δ:delta ε:varepsilon θ:theta λ:lambda μ:mu π:pi ρ:rho σ:sigma τ:tau φ:varphi ω:omega Γ:Gamma Δ:Delta Θ:Theta Λ:Lambda Π:Pi Σ:Sigma Φ:Phi Ω:Omega"
+      .split(" ").map((p) => { const [c, n] = p.split(":"); return [c, `\\${n} `, n]; }),
+    "Símbolos": [
+      ["≤", "\\leq "], ["≥", "\\geq "], ["≠", "\\neq "], ["≈", "\\approx "], ["≡", "\\equiv "],
+      ["∝", "\\propto "], ["→", "\\to "], ["⇒", "\\Rightarrow "], ["⇔", "\\Leftrightarrow "],
+      ["∈", "\\in "], ["∉", "\\notin "], ["⊂", "\\subset "], ["∪", "\\cup "], ["∩", "\\cap "],
+      ["∅", "\\emptyset "], ["∀", "\\forall "], ["∃", "\\exists "], ["ℝ", "\\mathbb{R}"],
+      ["ℕ", "\\mathbb{N}"], ["ℤ", "\\mathbb{Z}"], ["ℚ", "\\mathbb{Q}"], ["⊥", "\\perp "],
+      ["∥", "\\parallel "], ["△", "\\triangle "],
+    ],
+    "Química": [
+      ["H₂O", "\\ce{H2O‸}", "Fórmula"], ["A→B", "\\ce{‸ -> }", "Reacción"], ["A⇌B", "\\ce{‸ <=> }", "Equilibrio"],
+      ["SO₄²⁻", "\\ce{SO4^{2-}‸}", "Ion"], ["Δ", "\\Delta H", "Entalpía"],
+    ],
+  };
+  let paletteTab = "Básicas";
+
+  function renderPalette() {
+    $("#paletteTabs").innerHTML = Object.keys(PALETTE)
+      .map((t) => `<button type="button" role="tab" data-ptab="${t}" class="${t === paletteTab ? "on" : ""}">${t}</button>`).join("");
+    $("#paletteGrid").innerHTML = PALETTE[paletteTab].map(([label, tex, desc, block], i) =>
+      `<button type="button" data-pi="${i}" title="${escapeHtml(tex.replace("‸", "…"))}">${escapeHtml(label)}${desc ? `<small>${escapeHtml(desc)}</small>` : ""}</button>`).join("");
+  }
+
+  function togglePalette(open) {
+    const pal = $("#palette");
+    const show = open ?? pal.hidden;
+    pal.hidden = !show;
+    $("#paletteBtn").setAttribute("aria-expanded", String(show));
+    if (show) renderPalette();
+  }
+
+  function mathContext(ed) {
+    // ¿El cursor está dentro de una fórmula? Se cuentan los $ del párrafo actual.
+    const before = ed.value.slice(0, ed.selectionStart).replace(/\\\$/g, "");
+    const blocks = (before.match(/\$\$/g) || []).length;
+    if (blocks % 2 === 1) return "block";
+    const para = before.split(/\n\s*\n/).pop().replace(/\$\$/g, "");
+    return (para.match(/\$/g) || []).length % 2 === 1 ? "inline" : null;
+  }
+
+  function insertTex(tex, block) {
+    const ed = $("#editor");
+    const [a, b = ""] = tex.split("‸");
+    if (mathContext(ed)) wrapSelection(a, b);
+    else if (block) insertBlock(`$$\n${a}|${b}\n$$`);
+    else wrapSelection(`$${a}`, `${b}$`);
+  }
+
   // ------------------------------------------------------------- planes
   function renderPlans() {
     const cfg = state.config;
@@ -692,6 +770,13 @@ def saludo(nombre):
   $("#toolbar").addEventListener("click", (ev) => {
     const b = ev.target.closest("button");
     if (!b) return;
+    if (b.id === "paletteBtn") return togglePalette();
+    if (b.dataset.ptab) { paletteTab = b.dataset.ptab; return renderPalette(); }
+    if (b.dataset.pi !== undefined) {
+      const [, tex, , block] = PALETTE[paletteTab][Number(b.dataset.pi)];
+      togglePalette(false);
+      return insertTex(tex, block);
+    }
     if (b.dataset.md) { const [a, c] = b.dataset.md.split("|"); wrapSelection(a, c); }
     else if (b.dataset.line) prefixLines(b.dataset.line);
     else if (b.dataset.block) insertBlock(b.dataset.block);
@@ -700,6 +785,12 @@ def saludo(nombre):
       document.querySelectorAll(".view-switch button").forEach((x) => x.classList.toggle("on", x === b));
     }
   });
+
+  document.addEventListener("click", (ev) => {
+    // composedPath: el botón pulsado puede haberse redibujado ya (cambio de pestaña de la paleta).
+    if (!ev.composedPath().some((el) => el.classList && el.classList.contains("palette-wrap"))) togglePalette(false);
+  });
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") togglePalette(false); });
 
   ["optTheme", "optPage"].forEach((id) => $(`#${id}`).addEventListener("change", (ev) => {
     safeSet(id === "optTheme" ? "pdfTheme" : "pdfPage", ev.target.value);

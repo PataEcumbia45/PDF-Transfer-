@@ -15,8 +15,13 @@ const { AllPackages } = require("mathjax-full/js/input/tex/AllPackages.js");
 const adaptor = liteAdaptor();
 RegisterHTMLHandler(adaptor);
 
+// Funciones con su nombre en español (sen, tg, arcsen…), habituales en los talleres.
+const SPANISH = ["sen", "tg", "cotg", "cosec", "arcsen", "arccos", "arctg", "senh", "tgh"];
+const macros = Object.fromEntries(SPANISH.map((f) => [f, `\\operatorname{${f}}`]));
+
 const tex = new TeX({
   packages: AllPackages.filter((p) => p !== "bussproofs"),
+  macros,
   formatError: (jax, err) => { throw err; },
 });
 const svg = new SVG({ fontCache: "none" });

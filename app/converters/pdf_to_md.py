@@ -28,6 +28,7 @@ import pdfplumber
 from pypdf import PdfReader
 
 from .embed import extract_source
+from .math_layout import baseline_of, build_structures, join_latex, script_kind
 from .math_text import is_glue, is_math_font, is_variable, looks_like_math, to_latex
 
 BULLET_RE = re.compile(r"^([•●○◦▪▫■□‣⁃∙·◆◇►▸➢✓✔\-–—*+])\s*(?=\S)")
@@ -52,6 +53,7 @@ class Word:
     mono: bool
     link: str | None = None
     math: bool = False  # fuente matemática o símbolos matemáticos
+    latex: bool = False  # el texto ya es LaTeX (fracción, raíz… reconstruida)
 
 
 @dataclass
@@ -130,7 +132,9 @@ def _font_flags(fontname: str) -> tuple[bool, bool, bool]:
 
 
 def _escape(text: str) -> str:
-    return MD_ESCAPE_RE.sub(r"\\\1", text)
+    escaped = MD_ESCAPE_RE.sub(r"\\\1", text)
+    # Las rayas para rellenar ("______") no necesitan escape: no forman énfasis.
+    return re.sub(r"(?:\\_){3,}", lambda m: "_" * (len(m.group(0)) // 2), escaped)
 
 
 def _escape_line_start(text: str) -> str:
@@ -265,24 +269,6 @@ def _table_markdown(rows: list[list[str | None]]) -> str | None:
 # ---------------------------------------------------------- formato en línea
 
 
-def _baseline(line: Line) -> tuple[float, float]:
-    """Línea de base y tamaño de letra principal (ignorando potencias y subíndices)."""
-    size = max((w.size for w in line.words), default=0.0)
-    main = [w for w in line.words if w.size >= size * 0.85] or line.words
-    return statistics.median(w.bottom for w in main), statistics.median(w.size for w in main)
-
-
-def _script(w: Word, baseline: float, main_size: float) -> str:
-    """"^" si la palabra es una potencia, "_" si es un subíndice, "" si no."""
-    if not main_size or w.size > main_size * 0.95:
-        return ""
-    if w.bottom < baseline - main_size * 0.2:
-        return "^"
-    if w.bottom > baseline + main_size * 0.12:
-        return "_"
-    return ""
-
-
 def _inline(lines: list[Line], join_hyphens: bool = True) -> str:
     """Convierte palabras con estilo en Markdown en línea.
 
@@ -290,10 +276,10 @@ def _inline(lines: list[Line], join_hyphens: bool = True) -> str:
     fuente matemática, con símbolos matemáticos o elevadas/rebajadas
     (potencias/subíndices) se agrupan en un mismo ``$...$`` en LaTeX.
     """
-    # (texto, estilo, separador, tipo) con tipo = "text" | "math" | "glue"
-    tokens: list[tuple[str, tuple, str, str]] = []
+    # (texto, estilo, separador, tipo, ya_en_latex) con tipo = "text" | "math" | "glue"
+    tokens: list[tuple[str, tuple, str, str, bool]] = []
     for li, line in enumerate(lines):
-        baseline, main_size = _baseline(line)
+        baseline, main_size = baseline_of(line.words)
         for wi, w in enumerate(line.words):
             text = w.text
             last_in_line = wi == len(line.words) - 1
@@ -306,8 +292,10 @@ def _inline(lines: list[Line], join_hyphens: bool = True) -> str:
                 glue = " " if gap > w.size * 0.12 else ""
             if last_in_line and join_hyphens and text.endswith("-") and len(text) > 1 and nxt[:1].islower():
                 text, glue = text[:-1], ""
-            script = _script(w, baseline, main_size) if not w.mono else ""
-            if script:
+            script = script_kind(w, baseline, main_size) if not w.mono else ""
+            if w.latex:
+                kind = "math"
+            elif script:
                 kind, text = "math", f"{script}{{{to_latex(text)}}}"
             elif w.math:
                 kind = "math"
@@ -315,7 +303,7 @@ def _inline(lines: list[Line], join_hyphens: bool = True) -> str:
                 kind = "glue"
             else:
                 kind = "text"
-            tokens.append((text, (w.bold, w.italic, w.mono, w.link), glue, kind))
+            tokens.append((text, (w.bold, w.italic, w.mono, w.link), glue, kind, w.latex or bool(script)))
 
     # Las piezas "glue" (números, operadores, paréntesis, variables como "x" o "f(x)")
     # junto a una fórmula pasan a formar parte de ella.
@@ -340,12 +328,12 @@ def _inline(lines: list[Line], join_hyphens: bool = True) -> str:
             j = i
             while j < len(tokens) and kinds[j] == "math":
                 j += 1
-            parts, trailing = [], ""
+            parts, spaces, trailing = [], [], ""
             for k in range(i, j):
-                text, _, glue, _ = tokens[k]
-                latex = text if text[:1] in "^_" and text[1:2] == "{" else to_latex(text)
-                parts.append(latex + (glue if k < j - 1 else ""))
-            formula = "".join(parts).strip()
+                text, _, _, _, is_latex = tokens[k]
+                parts.append(text if is_latex else to_latex(text))
+                spaces.append(k > i and tokens[k - 1][2] == " " and not parts[-1].startswith(("^", "_")))
+            formula = join_latex(parts, spaces).strip()
             # La puntuación final pertenece a la frase, no a la fórmula.
             while formula and formula[-1] in ".,;:":
                 trailing = formula[-1] + trailing
@@ -360,7 +348,7 @@ def _inline(lines: list[Line], join_hyphens: bool = True) -> str:
             run.append(tokens[j])
             j += 1
         bold, italic, mono, link = style
-        text = "".join(t + (g if k < len(run) - 1 else "") for k, (t, _, g, _) in enumerate(run))
+        text = "".join(t + (g if k < len(run) - 1 else "") for k, (t, _, g, _, _) in enumerate(run))
         glue_after = run[-1][2] if j < len(tokens) else ""
         if mono:
             ticks = "``" if "`" in text else "`"
@@ -442,7 +430,10 @@ def _classify(lines: list[Line], body_size: float, heading_levels: dict[float, i
             blocks.append(Block("heading", line.top, line.page, [line], level=min(6, max(heading_levels.values()) + 1)))
             continue
 
-        if last and last.kind == "para" and not new_para_gap and abs(size - last.lines[-1].size) < 1.5:
+        # Una línea que acaba en un espacio para rellenar ("Nombre: ____") cierra el párrafo.
+        ends_blank = bool(last and last.lines and last.lines[-1].text.rstrip().endswith("___"))
+        if (last and last.kind == "para" and not new_para_gap and not ends_blank
+                and abs(size - last.lines[-1].size) < 1.5):
             last.lines.append(line)
         else:
             blocks.append(Block("para", line.top, line.page, [line]))
@@ -602,7 +593,7 @@ def pdf_to_markdown(data: bytes, images: str = "embed", prefer_embedded: bool = 
                 if uri:
                     links.append(((h["x0"], h["top"], h["x1"], h["bottom"]), uri))
 
-            words = _page_words(page, exclude, links)
+            words = build_structures(page, _page_words(page, exclude, links), exclude)
             total_chars += sum(len(w.text) for w in words)
             lines = _order_columns(_group_lines(words, p), float(page.width))
             page_lines.append(lines)
@@ -658,7 +649,8 @@ def pdf_to_markdown(data: bytes, images: str = "embed", prefer_embedded: bool = 
     markdown = "".join(parts).strip() + "\n"
     if has_math and not scanned:
         warnings.append(
-            "Este PDF contiene fórmulas. Se han reconstruido las sencillas (potencias, subíndices, "
-            "letras griegas y símbolos); para fracciones, matrices o sistemas usa el Modo IA."
+            "Este PDF contiene fórmulas y se han reconstruido en LaTeX (potencias, fracciones, raíces, "
+            "sumatorias, integrales, sistemas y matrices). Revísalas en la vista previa; si alguna no "
+            "quedó bien, vuelve a convertir el PDF con el Modo IA."
         )
     return ConversionResult(markdown, assets, "extracted", n_pages, warnings, has_math, scanned)

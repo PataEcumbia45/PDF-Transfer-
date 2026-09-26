@@ -93,10 +93,22 @@ def is_variable(text: str) -> bool:
     return bool(_VARIABLE_RE.match(text))
 
 
+# Funciones matemáticas escritas con letras: "sen(x)" → "\sen(x)", "log x" → "\log x".
+FUNCTIONS = {name: "\\" + name for name in ("sin", "cos", "tan", "cot", "sec", "csc", "log", "ln", "exp",
+                                              "sinh", "cosh", "tanh", "arcsin", "arccos", "arctan")}
+FUNCTIONS.update({name: "\\operatorname{" + name + "}" for name in ("sen", "tg", "cotg", "cosec", "arcsen",
+                                                                    "arctg", "senh")})
+_FUNCTION_RE = re.compile(r"^(" + "|".join(sorted(FUNCTIONS, key=len, reverse=True)) + r")(?=[(\s]|$)")
+
+
 def to_latex(text: str) -> str:
     """Traduce el texto de una palabra de una fórmula a LaTeX."""
     out: list[str] = []
     i = 0
+    function = _FUNCTION_RE.match(text)
+    if function:
+        out.append(FUNCTIONS[function.group(1)] + ("" if text[function.end():].startswith("(") else " "))
+        i = function.end()
     while i < len(text):
         ch = text[i]
         if ch in SUPERSCRIPTS or ch in SUBSCRIPTS:

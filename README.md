@@ -69,15 +69,30 @@ x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
 $$
 ```
 
-Se admite LaTeX completo de MathJax: `\frac`, `\sqrt`, `\int`, `\sum`, `\lim`, `pmatrix`, `cases`, `align`, `\mathbb`… Los importes como "$5 y $10" no se confunden con fórmulas (tras el `$` de apertura no puede haber un espacio, y tras el de cierre no puede haber un dígito). Si una fórmula tiene un error, se muestra el LaTeX en rojo en vez de perderla. El editor tiene botones para insertar fórmulas, fracciones y raíces.
+Se admite LaTeX completo de MathJax: `\frac`, `\sqrt`, `\int`, `\sum`, `\lim`, `pmatrix`, `cases`, `align`, `\mathbb`, química con `\ce{H2O}`… y las funciones en español `\sen`, `\tg`, `\arcsen`, `\cotg`, `\cosec`. El botón **∑ Fórmulas** del editor inserta fracciones, raíces, integrales, sistemas, matrices, letras griegas, símbolos y fórmulas químicas sin necesidad de saber LaTeX. Los importes como "$5 y $10" no se confunden con fórmulas (tras el `$` de apertura no puede haber un espacio, y tras el de cierre no puede haber un dígito). Si una fórmula tiene un error, se muestra el LaTeX en rojo en vez de perderla.
 
 ### Leer fórmulas de un PDF (PDF → Markdown)
 
 | Tipo de PDF | Cómo se lee |
 |---|---|
 | Creado con esta app | Se recupera el Markdown original exacto, con todas sus fórmulas. |
-| Fórmulas sencillas (Word, LaTeX, web) | Lectura local: potencias, subíndices, letras griegas y símbolos pasan a LaTeX (`$x^{2} + 3x - 4 = 0$`). |
-| Fracciones, matrices, sistemas; escaneos; escritura a mano | **Modo IA**: Claude transcribe cada página a Markdown con las fórmulas en LaTeX. |
+| Con texto seleccionable (Word, LaTeX, LibreOffice, web) | Lectura local, sin coste: potencias, subíndices, letras griegas, símbolos, **fracciones** (también anidadas), **raíces**, **sumatorias/integrales/límites** con sus límites, **sistemas de ecuaciones**, **matrices y determinantes**, funciones (`sen`, `cos`, `log`…) y espacios para rellenar (`Nombre: ____`). |
+| Escaneados, escritos a mano o con fórmulas muy complejas | **Modo IA**: Claude transcribe cada página a Markdown con las fórmulas en LaTeX. |
+
+Ejemplo de lectura local de un taller hecho en Word:
+
+```markdown
+1. Resuelva la ecuación $x^{2} + 5x + 6 = 0$
+
+$$
+x = \frac{-b \pm \sqrt{b^{2} - 4ac}}{2a}
+$$
+
+2. Simplifique $\frac{3}{4} + \frac{1}{2}$ y exprese el resultado.
+3. Resuelva $\begin{cases} 2x + 3y = 7 \\ x - y = 1 \end{cases}$
+```
+
+La lectura local funciona a partir de la geometría del PDF (la raya de una fracción, la barra de una raíz, los límites encima y debajo de un sumatorio…). Los tests la comprueban con PDF maquetados como los de Word y LaTeX, y verifican que todo el LaTeX extraído se puede dibujar sin errores.
 
 El selector **Fórmulas y escaneos** de la interfaz (campo `mode` de la API) tiene tres opciones:
 
