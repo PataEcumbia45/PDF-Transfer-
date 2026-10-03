@@ -10,7 +10,7 @@ from app.converters.pdf_to_md import pdf_to_markdown
 
 from .pdf_factory import MathPage, algebra_pdf, taller_pdf
 
-FORMULA_RE = re.compile(r"\$\$\n(.+?)\n\$\$|\$([^$\n]+)\$", re.S)
+FORMULA_RE = re.compile(r"\$\$\n\s*(.+?)\n\s*\$\$|\$([^$\n]+)\$", re.S)
 
 
 def formulas(md: str) -> list[str]:
@@ -28,7 +28,8 @@ def assert_valid_latex(md: str) -> None:
 def test_word_like_worksheet():
     md = pdf_to_markdown(taller_pdf()).markdown
     assert "$x^{2} + 5x + 6 = 0$" in md
-    assert "$$\nx = \\frac{-b \\pm \\sqrt{b^{2} - 4ac}}{2a}\n$$" in md  # fracción con raíz dentro
+    # Fracción con raíz dentro, como ecuación en bloque anidada en el ejercicio 1.
+    assert "   $$\n   x = \\frac{-b \\pm \\sqrt{b^{2} - 4ac}}{2a}\n   $$" in md
     assert "$\\frac{3}{4} + \\frac{1}{2}$" in md  # dos fracciones seguidas en el texto
     assert "$S = \\sum_{k=1}^{n}k^{2}$" in md  # sumatoria con límites
     assert "$\\int_{0}^{\\pi} \\operatorname{sen}(x) dx$" in md  # integral definida
@@ -78,3 +79,38 @@ def test_no_false_formulas_in_ordinary_documents():
     assert "[nuestra página web](https://ej.com)" in md
     assert "Texto subrayado en medio de una frase normal, y otra línea justo debajo." in md
     assert "| a | b |" in md
+
+
+def test_university_worksheet_structure():
+    """Estructura típica de un taller: encabezado centrado, ejercicios, función a trozos e incisos."""
+    from .pdf_factory import TEXT_FONT, WIDTH
+
+    p = MathPage()
+    for i, title in enumerate(["Universidad de Ejemplo", "Probabilidad y Estadística I"]):
+        p.text((WIDTH - p.width(title, 11, TEXT_FONT)) / 2, 70 + i * 14, title, 11)
+    p.text(60, 120, "1.", 11)
+    p.text(80, 120, "Suponga que el tiempo de atención es una v.a. continua con la siguiente f.d.p.", 11)
+    # f(x) = { k(x+1),  0 ≤ x ≤ 1   /   0,  otro caso   (centrada, llave del tamaño normal)
+    x = p.run(220, 160, [("f(x) = ", None)], 11)
+    p.text(x, 160 + 3, "{", 24)
+    p.run(x + 12, 152, [("k(x + 1),", None)], 11)
+    p.run(x + 80, 152, [("0 ≤ x ≤ 1", None)], 11)
+    p.run(x + 12, 168, [("0,", None)], 11)
+    p.run(x + 80, 168, [("otro caso", None)], 11)
+    p.text(80, 200, "a)", 11)
+    p.text(98, 200, "Encuentre el valor de k que hace que f(x) sea función de densidad", 11)
+    x = p.text(80, 215, "b)", 11)
+    x = p.text(98, 215, "Hallar ", 11)
+    p.run(x, 215, [("E(X) y V(X)", None)], 11)
+    x = p.text(60, 245, "2.", 11)
+    x = p.text(80, 245, "Resuelva ", 11)
+    p.run(x, 245, [("x + y = 3", None)], 11)
+
+    md = pdf_to_markdown(p.pdf()).markdown
+    assert "Universidad de Ejemplo\n\nProbabilidad y Estadística I" in md  # líneas centradas separadas
+    assert md.count("1. Suponga") == 1
+    assert "\\begin{cases} k(x + 1), & 0 \\leq x \\leq 1 \\\\ 0, & \\text{ otro caso } \\end{cases}" in md
+    assert "   a) Encuentre el valor de k" in md  # inciso con su letra, dentro del ejercicio 1
+    assert "\\\n   b) Hallar $E(X) \\text{ y } V(X)$" in md  # "y" entre expresiones es una palabra
+    assert "$x + y = 3$" in md  # la variable y no se toca
+    assert_valid_latex(md)

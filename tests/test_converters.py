@@ -48,7 +48,7 @@ def test_reconstructs_structure_from_foreign_pdf():
     assert "`código`" in md
     assert "[enlace](https://example.com/ruta)" in md
     assert "áéíóú ñ ¿? ¡! €" in md
-    assert "- Primero" in md and "  - Anidado" in md
+    assert "- Primero" in md and "   - Anidado" in md
     assert "1. Uno" in md and "2. Dos" in md
     assert "| Nombre | Valor |" in md and "| beta | 2 |" in md
     assert "```\ndef suma(a, b):\n    return a + b\n```" in md

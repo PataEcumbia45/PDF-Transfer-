@@ -92,6 +92,8 @@ $$
 3. Resuelva $\begin{cases} 2x + 3y = 7 \\ x - y = 1 \end{cases}$
 ```
 
+También funciona con PDF guardados con **"Microsoft: Imprimir a PDF"**, que pierden la traducción de algunos símbolos de las ecuaciones de Word (llaves y paréntesis grandes, números y letras de los exponentes): la app los recupera de la propia fuente incrustada (tablas `cmap`, `GSUB` y `MATH` de Cambria Math). Los incisos **a) b) c)** se conservan con su letra dentro de su ejercicio, y las palabras dentro de una fórmula (`otro caso`, `para`, `y`) se escriben con `\text{}`. Las fórmulas pegadas como **imagen** se conservan como imagen (con un aviso); el Modo IA puede transcribirlas.
+
 La lectura local funciona a partir de la geometría del PDF (la raya de una fracción, la barra de una raíz, los límites encima y debajo de un sumatorio…). Los tests la comprueban con PDF maquetados como los de Word y LaTeX, y verifican que todo el LaTeX extraído se puede dibujar sin errores.
 
 El selector **Fórmulas y escaneos** de la interfaz (campo `mode` de la API) tiene tres opciones:

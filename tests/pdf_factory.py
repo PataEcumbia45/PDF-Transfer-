@@ -19,8 +19,26 @@ FONT_DIR = "/usr/share/fonts/truetype/dejavu/"
 TEXT_FONT = "DejaVuSerif"
 MATH_FONT = "CambriaMath"  # el nombre que usa Word para las ecuaciones
 
+def _renamed_font(path: str, family: str) -> str:
+    """Copia de una fuente con otro nombre interno: el PDF la mostrará como ``family``
+    (Word escribe las ecuaciones con la fuente "Cambria Math", que aquí no está instalada)."""
+    import tempfile
+
+    from fontTools.ttLib import TTFont as FTFont
+
+    font = FTFont(path)
+    for record in font["name"].names:
+        if record.nameID in (1, 4):
+            record.string = family
+        elif record.nameID == 6:
+            record.string = family.replace(" ", "")
+    out = tempfile.NamedTemporaryFile(suffix=".ttf", delete=False)
+    font.save(out.name)
+    return out.name
+
+
 pdfmetrics.registerFont(TTFont(TEXT_FONT, FONT_DIR + "DejaVuSerif.ttf"))
-pdfmetrics.registerFont(TTFont(MATH_FONT, FONT_DIR + "DejaVuSerif.ttf"))
+pdfmetrics.registerFont(TTFont(MATH_FONT, _renamed_font(FONT_DIR + "DejaVuSerif.ttf", "Cambria Math")))
 
 WIDTH, HEIGHT = A4
 

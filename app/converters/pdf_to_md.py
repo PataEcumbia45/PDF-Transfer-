@@ -28,7 +28,9 @@ import pdfplumber
 from pypdf import PdfReader
 
 from .embed import extract_source
+from .font_glyphs import GlyphFixer
 from .math_layout import baseline_of, build_structures, join_latex, script_kind
+from .math_text import CONJUNCTIONS, merge_text, text_word
 from .math_text import is_glue, is_math_font, is_variable, looks_like_math, to_latex
 
 BULLET_RE = re.compile(r"^([•●○◦▪▫■□‣⁃∙·◆◇►▸➢✓✔\-–—*+])\s*(?=\S)")
@@ -107,6 +109,9 @@ class Block:
     markdown: str = ""
     ordered: bool = False
     number: str = "1"
+    x0: float | None = None  # sangría (posición del marcador o del texto)
+    marker: str = ""  # incisos "a)", "b)"…
+    marker_bold: bool = False
 
 
 @dataclass
@@ -331,9 +336,16 @@ def _inline(lines: list[Line], join_hyphens: bool = True) -> str:
             parts, spaces, trailing = [], [], ""
             for k in range(i, j):
                 text, _, _, _, is_latex = tokens[k]
-                parts.append(text if is_latex else to_latex(text))
+                # "E(X) y V(X)": una conjunción entre dos expresiones (con espacios a ambos lados
+                # y sin operador al lado) es una palabra, no la variable y.
+                if (not is_latex and unicodedata.normalize("NFKC", text) in CONJUNCTIONS and i < k < j - 1
+                        and tokens[k - 1][2] == " " and tokens[k][2] == " "
+                        and re.search(r"[\w)\]]$", tokens[k - 1][0]) and re.match(r"[\w(\\]", tokens[k + 1][0])):
+                    parts.append(text_word(unicodedata.normalize("NFKC", text)))
+                else:
+                    parts.append(text if is_latex else to_latex(text))
                 spaces.append(k > i and tokens[k - 1][2] == " " and not parts[-1].startswith(("^", "_")))
-            formula = join_latex(parts, spaces).strip()
+            formula = merge_text(join_latex(parts, spaces).strip())
             # La puntuación final pertenece a la frase, no a la fórmula.
             while formula and formula[-1] in ".,;:":
                 trailing = formula[-1] + trailing
@@ -371,9 +383,17 @@ def _inline(lines: list[Line], join_hyphens: bool = True) -> str:
 # ------------------------------------------------------------- clasificación
 
 
-def _classify(lines: list[Line], body_size: float, heading_levels: dict[float, int]) -> list[Block]:
+def _centered(line: Line, page_width: float, left: float) -> bool:
+    """Línea centrada y separada del margen izquierdo (títulos, fórmulas en su propia línea)."""
+    return (line.x0 > left + line.size * 3
+            and abs((line.x0 + line.x1) / 2 - page_width / 2) < page_width * 0.05)
+
+
+def _classify(lines: list[Line], body_size: float, heading_levels: dict[float, int],
+              page_width: float = 612.0) -> list[Block]:
     blocks: list[Block] = []
     list_base_x: float | None = None
+    left = min((ln.x0 for ln in lines), default=0.0)  # margen izquierdo de la página
 
     for idx, line in enumerate(lines):
         text = line.text.strip()
@@ -388,7 +408,7 @@ def _classify(lines: list[Line], body_size: float, heading_levels: dict[float, i
             if last and last.kind == "code" and gap < size * 2.5 and gap > -size:
                 last.lines.append(line)
             else:
-                blocks.append(Block("code", line.top, line.page, [line]))
+                blocks.append(Block("code", line.top, line.page, [line], x0=line.x0))
             continue
 
         level = heading_levels.get(round(size * 2) / 2)
@@ -396,7 +416,7 @@ def _classify(lines: list[Line], body_size: float, heading_levels: dict[float, i
             if last and last.kind == "heading" and last.level == level and 0 <= gap < size * 0.8:
                 last.lines.append(line)  # título que ocupa dos líneas
             else:
-                blocks.append(Block("heading", line.top, line.page, [line], level=level))
+                blocks.append(Block("heading", line.top, line.page, [line], level=level, x0=line.x0))
             continue
 
         bullet = BULLET_RE.match(text)
@@ -412,13 +432,20 @@ def _classify(lines: list[Line], body_size: float, heading_levels: dict[float, i
             words = ([Word(remainder, first.x0, first.x1, first.top, first.bottom, first.size,
                            first.bold, first.italic, first.mono, first.link)] if remainder else []) + line.words[1:]
             item = Line(words or line.words, line.page)
-            number = numbered.group(1) if numbered and numbered.group(1).isdigit() else "1"
+            if numbered and not numbered.group(1).isdigit():
+                # Inciso "a)", "b)"…: Markdown no tiene listas con letras; se conserva la letra.
+                blocks.append(Block("letter", line.top, line.page, [item], x0=line.x0,
+                                    marker=numbered.group(0).strip(), marker_bold=first.bold))
+                continue
+            number = numbered.group(1) if numbered else "1"
             blocks.append(Block("list", line.top, line.page, [item], level=depth,
-                                ordered=bool(numbered), number=number))
+                                ordered=bool(numbered), number=number, x0=line.x0))
             continue
 
-        # Continuación de un elemento de lista (texto sangrado bajo el marcador).
-        if last and last.kind == "list" and not new_para_gap and line.x0 > last.lines[0].x0 - 2:
+        # Continuación de un elemento de lista o inciso (texto sangrado bajo el marcador).
+        if (last and last.kind in {"list", "letter"} and not new_para_gap
+                and not _centered(line, page_width, left)
+                and line.x0 > last.lines[0].x0 - size * 0.6):
             last.lines.append(line)
             continue
 
@@ -427,16 +454,20 @@ def _classify(lines: list[Line], body_size: float, heading_levels: dict[float, i
         gap_after = nxt.top - line.bottom if nxt and nxt.page == line.page else 999.0
         if (line.all_bold and len(text) < 90 and not text.endswith((".", ",")) and new_para_gap
                 and gap_after > size * 0.65 and heading_levels):
-            blocks.append(Block("heading", line.top, line.page, [line], level=min(6, max(heading_levels.values()) + 1)))
+            blocks.append(Block("heading", line.top, line.page, [line], x0=line.x0,
+                                level=min(6, max(heading_levels.values()) + 1)))
             continue
 
         # Una línea que acaba en un espacio para rellenar ("Nombre: ____") cierra el párrafo.
         ends_blank = bool(last and last.lines and last.lines[-1].text.rstrip().endswith("___"))
-        if (last and last.kind == "para" and not new_para_gap and not ends_blank
+        # Las líneas cortas centradas (encabezados) van cada una en su propio párrafo.
+        centered = bool(last and last.lines) and (_centered(line, page_width, left)
+                                                   or _centered(last.lines[-1], page_width, left))
+        if (last and last.kind == "para" and not new_para_gap and not ends_blank and not centered
                 and abs(size - last.lines[-1].size) < 1.5):
             last.lines.append(line)
         else:
-            blocks.append(Block("para", line.top, line.page, [line]))
+            blocks.append(Block("para", line.top, line.page, [line], x0=line.x0))
     return blocks
 
 
@@ -463,6 +494,52 @@ def _code_markdown(block: Block) -> str:
     return f"{fence}\n{body}\n{fence}"
 
 
+def _assemble(blocks: list[Block], body_size: float) -> str:
+    """Une los bloques en Markdown, anidando bajo cada ejercicio lo que va sangrado debajo.
+
+    Así, en "1. Enunciado" seguido de una fórmula centrada, una figura y los incisos
+    "a) b) c)", todo eso queda dentro del ejercicio 1 (indentado 3 espacios).
+    """
+    parts: list[str] = []
+    prev_kind: str | None = None
+    item: Block | None = None  # ejercicio (elemento de lista de primer nivel) en curso
+    i = 0
+    while i < len(blocks):
+        block = blocks[i]
+        if block.kind == "letter":
+            j = i
+            while j < len(blocks) and blocks[j].kind == "letter":
+                j += 1
+            lines = [(f"**{b.marker}**" if b.marker_bold else b.marker) + " " + _inline(b.lines)
+                     for b in blocks[i:j]]
+            rendered = "\\\n".join(lines)  # un inciso por línea (salto de línea forzado)
+            i = j
+        else:
+            rendered = _render_block(block)
+            i += 1
+        if not rendered.strip():
+            continue
+
+        indent = ""
+        if block.kind == "list" and block.level == 0:
+            item = block
+        elif block.kind == "list":
+            pass  # sublista: ya lleva su sangría
+        elif block.kind == "heading":
+            item = None
+        elif item is not None and (block.x0 is None or block.x0 > item.x0 + body_size * 0.8):
+            # Sangría = ancho del marcador del ejercicio ("1. " → 3, "10. " → 4 espacios).
+            indent = " " * (len(item.number) + 2 if item.ordered else 2)
+        else:
+            item = None
+        if indent:
+            rendered = "\n".join(indent + ln if ln else ln for ln in rendered.split("\n"))
+        tight = prev_kind == "list" and block.kind == "list"
+        parts.append(("\n" if tight else "\n\n") + rendered if parts else rendered)
+        prev_kind = block.kind
+    return "".join(parts).strip() + "\n"
+
+
 def _render_block(block: Block) -> str:
     if block.kind in {"table", "image"}:
         return block.markdown
@@ -473,7 +550,7 @@ def _render_block(block: Block) -> str:
         return "#" * block.level + " " + _escape(text).strip()
     if block.kind == "list":
         marker = f"{block.number}." if block.ordered else "-"
-        return "  " * block.level + f"{marker} " + _inline(block.lines)
+        return "   " * block.level + f"{marker} " + _inline(block.lines)
     text = _inline(block.lines)
     if re.fullmatch(r"\$[^$]+\$", text):  # párrafo que es solo una fórmula: ecuación en bloque
         return f"$$\n{text[1:-1]}\n$$"
@@ -560,12 +637,17 @@ def pdf_to_markdown(data: bytes, images: str = "embed", prefer_embedded: bool = 
     page_lines: list[list[Line]] = []
     page_extras: list[list[Block]] = []
     heights: list[float] = []
+    widths: list[float] = []
     total_chars = 0
     image_pages = 0  # páginas ocupadas casi por completo por una imagen (escaneos, fotos)
+    formula_images = 0  # imágenes que parecen fórmulas pegadas como imagen
 
+    glyph_fixer = GlyphFixer(data)
     with pdfplumber.open(io.BytesIO(data)) as pdf:
         for p, page in enumerate(pdf.pages):
+            glyph_fixer.fix(page)
             heights.append(float(page.height))
+            widths.append(float(page.width))
             area = float(page.width * page.height) or 1.0
             if any((im["x1"] - im["x0"]) * (im["bottom"] - im["top"]) > area * 0.5 for im in page.images):
                 image_pages += 1
@@ -579,13 +661,22 @@ def pdf_to_markdown(data: bytes, images: str = "embed", prefer_embedded: bool = 
             for t in tables:
                 md_table = _table_markdown(t.extract())
                 if md_table:
-                    extras.append(Block("table", t.bbox[1], p, markdown=md_table))
+                    extras.append(Block("table", t.bbox[1], p, markdown=md_table, x0=t.bbox[0]))
                     exclude.append(t.bbox)
 
             if images != "none":
                 for top, name, png in page_images(page, p):
                     assets[name] = png
                     extras.append(Block("image", top, p, markdown=f"![Imagen](images/{name})"))
+                    try:
+                        from PIL import Image
+
+                        with Image.open(io.BytesIO(png)) as im:
+                            # Baja y alargada: suele ser una fórmula pegada como imagen.
+                            if im.height < 150 and im.width > im.height * 3:
+                                formula_images += 1
+                    except Exception:
+                        pass
 
             links = []
             for h in page.hyperlinks or []:
@@ -607,6 +698,13 @@ def pdf_to_markdown(data: bytes, images: str = "embed", prefer_embedded: bool = 
             "Usa el Modo IA para transcribirlo; mientras tanto se han extraído las páginas como imágenes."
         )
     has_math = any(w.math for lines in page_lines for ln in lines for w in ln.words)
+    if formula_images:
+        warnings.append(
+            f"{formula_images} imagen(es) parecen fórmulas pegadas como imagen y se conservan como "
+            "imagen. El Modo IA puede transcribirlas a LaTeX."
+        )
+    if glyph_fixer.unknown:
+        warnings.append(f"{glyph_fixer.unknown} símbolo(s) no se pudieron identificar y aparecen como □.")
 
     drop = _detect_repeated(page_lines, heights)
     page_lines = [[ln for i, ln in enumerate(lines) if (p, i) not in drop] for p, lines in enumerate(page_lines)]
@@ -625,7 +723,7 @@ def pdf_to_markdown(data: bytes, images: str = "embed", prefer_embedded: bool = 
 
     blocks: list[Block] = []
     for p in range(n_pages):
-        page_blocks = _classify(page_lines[p], body_size, heading_levels)
+        page_blocks = _classify(page_lines[p], body_size, heading_levels, widths[p])
         # Intercalar tablas e imágenes según su posición vertical.
         for extra in sorted(page_extras[p], key=lambda b: b.top):
             pos = next((i for i, b in enumerate(page_blocks) if b.top > extra.top), len(page_blocks))
@@ -637,16 +735,7 @@ def pdf_to_markdown(data: bytes, images: str = "embed", prefer_embedded: bool = 
             blocks[-1].lines.extend(page_blocks.pop(0).lines)
         blocks.extend(page_blocks)
 
-    parts: list[str] = []
-    prev: Block | None = None
-    for block in blocks:
-        rendered = _render_block(block)
-        if not rendered.strip():
-            continue
-        sep = "\n" if prev is not None and prev.kind == "list" and block.kind == "list" else "\n\n"
-        parts.append((sep if parts else "") + rendered)
-        prev = block
-    markdown = "".join(parts).strip() + "\n"
+    markdown = _assemble(blocks, body_size)
     if has_math and not scanned:
         warnings.append(
             "Este PDF contiene fórmulas y se han reconstruido en LaTeX (potencias, fracciones, raíces, "

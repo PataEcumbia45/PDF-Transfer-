@@ -25,7 +25,7 @@ from collections import Counter
 from dataclasses import replace
 from typing import Any
 
-from .math_text import is_glue, is_variable, looks_like_math, to_latex
+from .math_text import TEXT_WORDS, is_glue, is_variable, looks_like_math, merge_text, to_latex
 
 Word = Any  # pdf_to_md.Word (evita la importación circular)
 
@@ -90,7 +90,7 @@ def band_latex(words: list[Word]) -> str:
         gap = w.x0 - words[i - 1].x1 if i else 0.0
         parts.append(piece)
         spaces.append(i > 0 and gap > size * 0.15 and not piece.startswith(("^", "_")))
-    return join_latex(parts, spaces).strip()
+    return merge_text(join_latex(parts, spaces).strip())
 
 
 # ------------------------------------------------------------------ geometría
@@ -292,7 +292,8 @@ def _rows(words: list[Word]) -> list[list[Word]]:
 def _mathy(row: list[Word]) -> bool:
     """¿La fila parece una expresión matemática y no una línea de texto?"""
     hits = sum(1 for w in row if getattr(w, "latex", False) or w.math or is_glue(w.text)
-               or is_variable(w.text) or looks_like_math(w.text) or (len(w.text) == 1 and w.text.isalpha()))
+               or is_variable(w.text) or looks_like_math(w.text) or (len(w.text) == 1 and w.text.isalpha())
+               or w.text.rstrip(".,;:").lower() in TEXT_WORDS)
     return hits >= max(1, 0.6 * len(row))
 
 
@@ -329,9 +330,10 @@ def _stacked(words: list[Word]) -> tuple[Word, list[Word]] | None:
             else:
                 closer = min(closers, key=lambda w: w.x0)
         inside = [w for w in window if w is not closer and (closer is None or _cx(w) < closer.x0 + 1)]
-        rows = [r for r in _rows(inside) if r[0].x0 <= d.x1 + size * 1.5]
-        if closer is None:  # llave de un sistema: cada fila llega hasta un hueco grande
-            rows = [_cells(r, size * 3)[0] for r in rows]
+        # Las filas empiezan junto al delimitador (o algo más lejos si están alineadas a la derecha).
+        rows = [r for r in _rows(inside) if r[0].x0 <= d.x1 + size * 5]
+        if closer is None:  # llave: cada fila (valor y condición) llega hasta un hueco muy grande
+            rows = [[w for c in _cells(r, size * 8)[:1] for w in c] for r in rows]
         if len(rows) < 2:
             continue
         centers = [statistics.median(_cy(w) for w in r) for r in rows]
@@ -341,7 +343,34 @@ def _stacked(words: list[Word]) -> tuple[Word, list[Word]] | None:
         if any(b - a > size * 2.2 for a, b in zip(centers, centers[1:])) or not all(_mathy(r) for r in rows):
             continue
         if closer is None:
-            body = r" \\ ".join(" & ".join(band_latex(c) for c in _cells(r, size * 2)) for r in rows)
+            # Valor & condición: la condición empieza tras el primer hueco claro de la fila, y en
+            # las filas sin hueco claro, en la misma columna que en las demás.
+            starts = [cells[1][0].x0 for cells in (_cells(r, size * 1.2) for r in rows) if len(cells) > 1]
+            column = min(starts) if starts else None
+
+            def after_comma(r: list[Word]) -> int | None:
+                """Índice de la primera palabra tras "valor," (coma fuera de paréntesis)."""
+                depth = 0
+                for k, w in enumerate(r[:-1]):
+                    depth += w.text.count("(") - w.text.count(")")
+                    if depth == 0 and w.text.endswith(","):
+                        return k + 1
+                return None
+
+            commas = [after_comma(r) for r in rows]
+
+            def case_row(r: list[Word]) -> str:
+                if column is None:
+                    k = after_comma(r) if all(c is not None for c in commas) else None
+                    if k is None:
+                        return band_latex(r)
+                    return band_latex(r[:k]) + " & " + band_latex(r[k:])
+                value = [w for w in r if w.x0 < column - size * 0.3]
+                condition = [w for w in r if w.x0 >= column - size * 0.3]
+                if not value or not condition:
+                    return band_latex(r)
+                return band_latex(value) + " & " + band_latex(condition)
+            body = r" \\ ".join(case_row(r) for r in rows)
             latex = rf"\begin{{cases}} {body} \end{{cases}}"
         else:
             body = r" \\ ".join(" & ".join(band_latex(c) for c in _cells(r, size * 0.9)) for r in rows)

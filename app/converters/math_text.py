@@ -101,8 +101,38 @@ FUNCTIONS.update({name: "\\operatorname{" + name + "}" for name in ("sen", "tg",
 _FUNCTION_RE = re.compile(r"^(" + "|".join(sorted(FUNCTIONS, key=len, reverse=True)) + r")(?=[(\s]|$)")
 
 
+# Palabras que aparecen dentro de las fórmulas ("0, otro caso", "para x ≥ 0"). En LaTeX
+# se escriben con \text{} para que conserven sus espacios y no se lean como variables.
+TEXT_WORDS = {
+    "para", "si", "otro", "otra", "caso", "casos", "resto", "donde", "cuando", "con", "en", "de", "lo",
+    "contrario", "parte", "demás", "todo", "toda", "forma", "sino", "entonces", "tal", "que", "and",
+    "otherwise", "for", "if", "elsewhere", "where",
+}
+_TEXT_RE = re.compile(r"\\text\{([^{}]*)\}(\s*)\\text\{([^{}]*)\}")
+# Conjunciones que unen dos expresiones ("E(X) y V(X)"); no son la variable y.
+CONJUNCTIONS = {"y", "o", "e", "u", "ó"}
+
+
+def text_word(word: str) -> str:
+    """Palabra dentro de una fórmula, con espacios para que no se pegue a lo de alrededor."""
+    return "\\text{ " + word + " }"
+
+
+def merge_text(latex: str) -> str:
+    """Une ``\text{otro} \text{caso}`` en ``\text{otro caso}``."""
+    while True:
+        merged = _TEXT_RE.sub(lambda m: text_word(m.group(1).strip() + " " + m.group(3).strip()), latex)
+        if merged == latex:
+            return latex
+        latex = merged
+
+
 def to_latex(text: str) -> str:
     """Traduce el texto de una palabra de una fórmula a LaTeX."""
+    plain = unicodedata.normalize("NFKC", text)
+    word, punct = re.match(r"^(.*?)([.,;:]*)$", plain).groups()
+    if word.lower() in TEXT_WORDS:
+        return text_word(word) + punct
     out: list[str] = []
     i = 0
     function = _FUNCTION_RE.match(text)
@@ -124,7 +154,8 @@ def to_latex(text: str) -> str:
             nxt = text[i + 1] if i + 1 < len(text) else ""
             out.append(cmd + (" " if cmd[-1].isalpha() and cmd.startswith("\\") and nxt.isalpha() else ""))
         elif _is_math_alnum(ch):
-            out.append(unicodedata.normalize("NFKC", ch))
+            plain = unicodedata.normalize("NFKC", ch)  # 𝑥 → x, 𝜆 → λ
+            out.append(SYMBOLS.get(plain, plain) + (" " if plain in SYMBOLS and text[i + 1:i + 2].isalpha() else ""))
         elif ch in _LATEX_SPECIAL:
             out.append(_LATEX_SPECIAL[ch])
         else:
