@@ -1,15 +1,22 @@
+# Configuración en el archivo .env (lo crean los scripts "iniciar" a partir de .env.personal).
 services:
   web:
     build: .
+    image: pdf-transfer
     ports:
-      - "8000:8000"
+      # 127.0.0.1 = solo accesible desde este computador. En un servidor: HOST_BIND=0.0.0.0
+      - "${HOST_BIND:-127.0.0.1}:${APP_PORT:-8000}:8000"
     environment:
-      APP_NAME: "PDF Transfer"
-      # Claves de clientes de pago: "clave:plan,clave2:plan" (planes: pro, business)
-      API_KEYS: ""
-      CONTACT_EMAIL: ""
+      APP_NAME: "${APP_NAME:-PDF Transfer}"
+      DISABLE_LIMITS: "${DISABLE_LIMITS:-false}"
+      ACCESS_USER: "${ACCESS_USER:-}"
+      ACCESS_PASSWORD: "${ACCESS_PASSWORD:-}"
       # Modo IA (fórmulas complejas, escaneos y manuscritos): clave de https://console.anthropic.com
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-      ALLOW_REMOTE_IMAGES: "false"
-      DISABLE_LIMITS: "false"
+      AI_MODEL: "${AI_MODEL:-claude-opus-5}"
+      AI_EFFORT: "${AI_EFFORT:-medium}"
+      API_KEYS: "${API_KEYS:-}"
+      CONTACT_EMAIL: "${CONTACT_EMAIL:-}"
+      ALLOW_REMOTE_IMAGES: "${ALLOW_REMOTE_IMAGES:-false}"
+      CORS_ORIGINS: "${CORS_ORIGINS:-}"
     restart: unless-stopped

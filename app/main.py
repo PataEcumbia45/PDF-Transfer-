@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hmac
 import io
 import posixpath
 import re
@@ -57,6 +58,26 @@ async def security_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     return response
+
+
+@app.middleware("http")
+async def access_control(request: Request, call_next):
+    """Si hay ACCESS_PASSWORD, el navegador pide usuario y contraseña (HTTP Basic) para entrar."""
+    if settings.access_password and request.url.path != "/api/health":
+        user, password = "", ""
+        header = request.headers.get("authorization", "")
+        if header[:6].lower() == "basic ":
+            try:
+                user, _, password = base64.b64decode(header[6:]).decode("utf-8").partition(":")
+            except (binascii.Error, UnicodeDecodeError):
+                pass
+        valid = hmac.compare_digest(password.encode(), settings.access_password.encode()) and (
+            not settings.access_user or hmac.compare_digest(user.encode(), settings.access_user.encode()))
+        if not valid:
+            return Response("Acceso restringido: introduce la contraseña de la aplicación.", status_code=401,
+                            headers={"WWW-Authenticate": f'Basic realm="{settings.app_name}", charset="UTF-8"'},
+                            media_type="text/plain; charset=utf-8")
+    return await call_next(request)
 
 
 # ------------------------------------------------------------------ utilidades

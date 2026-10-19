@@ -16,9 +16,12 @@ Aplicación web para convertir **PDF → Markdown** y **Markdown → PDF** sin p
 
 ## Puesta en marcha
 
+> **¿Solo quieres usarla en tu computador?** Sigue la [Guía rápida](GUIA_INICIO.md): instalas Docker Desktop y haces doble clic en `iniciar-windows.bat` o `iniciar-mac.command`.
+
 ### Con Docker (recomendado)
 
 ```bash
+cp .env.personal .env   # o .env.example para un servidor
 docker compose up --build
 ```
 
@@ -52,6 +55,8 @@ Todo se configura con variables de entorno (ver `.env.example`):
 | `ALLOW_REMOTE_IMAGES` | Permite imágenes `http(s)` en el Markdown. Mantener en `false` en un servicio público. |
 | `DISABLE_LIMITS` | Quita todos los límites (uso personal o interno). |
 | `CORS_ORIGINS` | Dominios que pueden usar la API desde el navegador. |
+| `ACCESS_USER` / `ACCESS_PASSWORD` | Pide usuario y contraseña para entrar (HTTP Basic). Vacía = acceso libre. Úsala sobre HTTPS. |
+| `HOST_BIND` / `APP_PORT` | Solo en `docker-compose.yml`: dónde escucha el contenedor (`127.0.0.1` solo este equipo, `0.0.0.0` servidor) y en qué puerto. |
 | `ANTHROPIC_API_KEY` | Activa el Modo IA (ver abajo). |
 | `AI_MODEL` / `AI_EFFORT` / `AI_CONCURRENCY` | Modelo (`claude-opus-5` por defecto), esfuerzo (`medium`) y páginas en paralelo (`4`) del Modo IA. |
 

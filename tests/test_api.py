@@ -122,3 +122,28 @@ def test_api_keys(client, paid_key):
     assert cfg["plan"]["id"] == "pro"
     bad = client.post("/api/convert/md-to-pdf", data={"markdown": "x"}, headers={"X-API-Key": "falsa"})
     assert bad.status_code == 401
+
+
+@pytest.fixture
+def password_on(monkeypatch):
+    settings = config.Settings(access_user="profe", access_password="clave-secreta")
+    monkeypatch.setattr("app.main.settings", settings)
+
+
+def _basic(user: str, password: str) -> dict:
+    return {"Authorization": "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()}
+
+
+def test_access_password(client, password_on):
+    res = client.get("/")
+    assert res.status_code == 401 and "Basic" in res.headers["www-authenticate"]
+    assert client.get("/", headers=_basic("profe", "mala")).status_code == 401
+    assert client.get("/", headers=_basic("otro", "clave-secreta")).status_code == 401
+    assert client.get("/", headers=_basic("profe", "clave-secreta")).status_code == 200
+    ok = client.post("/api/convert/md-to-pdf", data={"markdown": "# Hola"}, headers=_basic("profe", "clave-secreta"))
+    assert ok.status_code == 200
+    assert client.get("/api/health").status_code == 200  # comprobación de salud siempre abierta
+
+
+def test_no_password_by_default(client):
+    assert client.get("/").status_code == 200

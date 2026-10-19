@@ -86,6 +86,10 @@ class Settings:
     ai_model: str = field(default_factory=lambda: os.getenv("AI_MODEL", "claude-opus-5"))
     ai_effort: str = field(default_factory=lambda: os.getenv("AI_EFFORT", "medium"))
     ai_concurrency: int = field(default_factory=lambda: int(os.getenv("AI_CONCURRENCY", "4")))
+    # Contraseña para entrar a la aplicación (vacía = acceso libre). Útil para tenerla en
+    # internet solo para ti antes de abrirla al público. El navegador la pide al entrar.
+    access_user: str = field(default_factory=lambda: os.getenv("ACCESS_USER", ""))
+    access_password: str = field(default_factory=lambda: os.getenv("ACCESS_PASSWORD", ""))
     # Orígenes permitidos para CORS (API usada desde otros dominios). "*" o lista separada por comas.
     cors_origins: tuple[str, ...] = field(
         default_factory=lambda: tuple(o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip())
