@@ -38,8 +38,10 @@ if errorlevel 1 (
 
 echo.
 echo   Esperando a que la aplicacion responda...
+rem 127.0.0.1 y no "localhost": Windows prueba primero IPv6 y el contenedor escucha en IPv4.
 for /l %%i in (1,1,90) do (
-  powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://localhost:8000/api/health; exit 0 } catch { exit 1 }" >nul 2>&1 && goto listo
+  curl.exe -fs -m 3 http://127.0.0.1:8000/api/health >nul 2>&1 && goto listo
+  powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 http://127.0.0.1:8000/api/health; exit 0 } catch { exit 1 }" >nul 2>&1 && goto listo
   timeout /t 2 /nobreak >nul
 )
 echo   La aplicacion tarda en responder. Prueba a abrir http://localhost:8000

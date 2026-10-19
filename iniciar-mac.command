@@ -36,7 +36,7 @@ fi
 echo
 echo "  Esperando a que la aplicación responda..."
 for _ in $(seq 1 90); do
-  if curl -fsS -m 2 http://localhost:8000/api/health >/dev/null 2>&1; then
+  if curl -fsS -m 3 http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
     (open http://localhost:8000 || xdg-open http://localhost:8000) >/dev/null 2>&1
     echo
     echo "  Lista: http://localhost:8000"
